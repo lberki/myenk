@@ -1,0 +1,14 @@
+{
+  "name": "nostrum",
+  "version": "0.0.1",
+  "description": "",
+  "main": "nostrum.js",
+  "scripts": {
+    "test": "jasmine"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "jasmine": "^4.0.2"
+  }
+}
