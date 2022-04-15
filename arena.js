@@ -2,6 +2,7 @@
 
 // TODO:
 // - Figure out why # private members don't work
+// - Implement statistics (fragmentation, blocks, histogram, etc.)
 
 const util = require("util");
 const debuglog = util.debuglog("arena");
