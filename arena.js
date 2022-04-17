@@ -11,7 +11,7 @@ const ARENA_HEADER_SIZE = 16;
 const BLOCK_HEADER_SIZE = 4;
 
 class Ptr {
-    constructor(arena, base, size) {
+    constructor(arena, base) {
 	this._arena = arena;
 	this._base = base;
     }
@@ -20,9 +20,19 @@ class Ptr {
 	let size = this._arena.uint32[this._base / 4];
 	if (i < 0 || i >= size) {
 	    throw new Error("out of bounds");
-	}         
+	}
     }
-    
+
+    get8(i) {
+	this._boundsCheck(i);
+	return this._arena.uint8[this._base + BLOCK_HEADER_SIZE + i];
+    }
+
+    set8(i, x) {
+	this._boundsCheck(i);
+	this._arena.uint8[this._base + BLOCK_HEADER_SIZE + i] = x;
+    }
+
     get32(i) {
 	this._boundsCheck(i*4);
 	return this._arena.uint32[(this._base + BLOCK_HEADER_SIZE) / 4 + i];
@@ -32,7 +42,7 @@ class Ptr {
 	this._boundsCheck(i*4);
 	this._arena.uint32[(this._base + BLOCK_HEADER_SIZE) / 4 + i] = x;
     }
-	
+
 }
 
 class Arena {
@@ -40,15 +50,17 @@ class Arena {
 	if (size % 16 !== 0) {
 	    throw new Error("size must be a multiple of 16");
 	}
-	
+
 	this.bytes = new SharedArrayBuffer(ARENA_HEADER_SIZE + size);
 	this.uint32 = new Uint32Array(this.bytes);
+	this.uint8 = new Uint8Array(this.bytes);
 	this.size = size;
 	this.freeStart = ARENA_HEADER_SIZE;
 	this.freeEnd = ARENA_HEADER_SIZE + size;
 
 	this.uint32[0] = 0xd1ce4011;  // Magic
 	this.uint32[1] = 0;           // Start of freelist
+	this.uint32[2] = size;
 
 	debuglog("created arena(size=%d)", size);
     }
@@ -83,6 +95,10 @@ class Arena {
 	}
     }
 
+    fromAddr(addr) {
+	return new Ptr(this, addr);
+    }
+
     alloc(size) {
 	if (size <= 0 || (size % 4) !== 0) {
 	    throw new Error("invalid size");
@@ -92,9 +108,10 @@ class Arena {
 	if (fromFreeList !== null) {
 	    this.uint32[fromFreeList / 4] = size;
 	    debuglog("allocated %d bytes @ %d from freelist", size, fromFreeList);
-	    return new Ptr(this, fromFreeList, size);
+	    this.uint32[2] = this.uint32[2] - size;
+	    return new Ptr(this, fromFreeList);
 	}
-	
+
 	let base = this.freeStart;
 	if (base + size + BLOCK_HEADER_SIZE > this.freeEnd) {
 	    throw new Error("out of memory");
@@ -104,15 +121,21 @@ class Arena {
 	this.uint32[base / 4] = size;
 
 	debuglog("allocated %d bytes @ %d by expansion", size, base);
-	return new Ptr(this, base, size);
+	this.uint32[2] = this.uint32[2] - size;
+	return new Ptr(this, base);
     }
 
     free(ptr) {
-	debuglog("freeing %d bytes @ %d", this.uint32[ptr._base / 4], ptr._base);
-
+	let size = this.uint32[ptr._base / 4];
+	debuglog("freeing %d bytes @ %d", size, ptr._base);
+	this.uint32[2] = this.uint32[2] + size;
 	let oldFreelistHead = this.uint32[1];
 	ptr.set32(0, oldFreelistHead);
 	this.uint32[1] = ptr._base;
+    }
+
+    left() {
+	return this.uint32[2];
     }
 }
 

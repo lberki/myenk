@@ -12,6 +12,7 @@ describe("arena", () => {
 	let ptr = cut.alloc(28);
 	ptr.set32(0, 1);
 	expect(ptr.get32(0)).toBe(1);
+	expect(cut.left()).toBe(4);
     });
 
     it("can reallocate freed block", () => {
@@ -19,8 +20,10 @@ describe("arena", () => {
 	let ptr = cut.alloc(28);
 	ptr.set32(2, 1);
 	cut.free(ptr);
+	expect(cut.left()).toBe(32);
 	ptr = cut.alloc(28);
 	expect(ptr.get32(2)).toBe(1);
+	expect(cut.left()).toBe(4);
     });
 
     it("can halve freed block", () => {
@@ -28,7 +31,9 @@ describe("arena", () => {
 	let ptr = cut.alloc(28);
 	cut.free(ptr);
 	let ptr1 = cut.alloc(12);
+	expect(cut.left()).toBe(20);
 	let ptr2 = cut.alloc(12);
+	expect(cut.left()).toBe(8);
     });
 
     it("can skip block too small", () => {
