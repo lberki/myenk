@@ -66,7 +66,7 @@ function handlerSet(target, property, value, receiver) {
 }
 
 function handlerDeleteProperty(target, property) {
-    throw new Error("not implemented");
+    return target._deleteProperty(property);
 }
 
 function handlerHas(target, property) {
@@ -151,10 +151,15 @@ class SharedObject {
     }
 
     _findProperty(bytes) {
-	let next = this[Private]._ptr.get32(0);
-	while (next !== 0) {
-	    let cellPtr = this[Private]._arena.fromAddr(next);
-	    let keyPtr = this[Private]._arena.fromAddr(cellPtr.get32(1));
+	let prevPtr = this[Private]._ptr;
+	while (true) {
+	    let next = prevPtr.get32(0);
+	    if (next === 0) {
+		break;
+	    }
+
+	    let nextPtr = this[Private]._arena.fromAddr(next);
+	    let keyPtr = this[Private]._arena.fromAddr(nextPtr.get32(1));
 	    let ok = true;
 	    for (let i = 0; i < bytes.length; i++) {
 		if (keyPtr.get8(i) !== bytes[i]) {
@@ -164,13 +169,13 @@ class SharedObject {
 	    }
 
 	    if (ok) {
-		return cellPtr;
+		return [prevPtr, nextPtr];
 	    }
 
-	    next = cellPtr.get32(0);
+	    prevPtr = nextPtr;
 	}
 
-	return null;
+	return [null, null];
     }
 
     _get(property, value) {
@@ -179,7 +184,7 @@ class SharedObject {
 	}
 
 	let propBytes = this._toBytes(property);
-	let cellPtr = this._findProperty(propBytes);
+	let [_, cellPtr] = this._findProperty(propBytes);
 	if (cellPtr === null) {
 	    return undefined;
 	}
@@ -198,7 +203,7 @@ class SharedObject {
 	}
 
 	let propBytes = this._toBytes(property);
-	let cellPtr = this._findProperty(propBytes);
+	let [_, cellPtr] = this._findProperty(propBytes);
 	if (cellPtr === null) {
 	    // The property does not exist, allocate it
 
@@ -217,6 +222,19 @@ class SharedObject {
 
 	}
 
+	return true;
+    }
+
+    _deleteProperty(property) {
+	let propBytes = this._toBytes(property);
+	let [prevPtr, nextPtr] = this._findProperty(propBytes);
+
+	if (prevPtr === null) {
+	    return true;
+	}
+
+	// TODO: maybe free nexPtr? Or leave that to GC, which will eventually exist?
+	prevPtr.set32(0, nextPtr.get32(0));
 	return true;
     }
 
