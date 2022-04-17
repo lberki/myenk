@@ -214,13 +214,14 @@ class SharedObject {
 
 	    cellPtr = this[Private]._arena.alloc(16);
 	    cellPtr.set32(1, keyPtr._base);
-	    cellPtr.set32(3, value);  // We don't care about the type for now
 
 	    // Link in the new cell
 	    cellPtr.set32(0, this[Private]._ptr.get32(0));
 	    this[Private]._ptr.set32(0, cellPtr._base);
 
 	}
+
+	cellPtr.set32(3, value);  // We don't care about the type for now
 
 	return true;
     }
