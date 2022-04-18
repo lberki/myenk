@@ -1,7 +1,6 @@
 "use strict";
 
 // TODO:
-// - Test circular object references
 // - Deallocate memory when deleting a property (GC is only at the object level)
 // - Implement symbols as keys
 // - Implement GC (and a linked list of every known object)
@@ -11,7 +10,6 @@
 //   - Wrap shared data structures (Arena + Object header) in a lock
 //   - Test proxy creation in .get()
 // - Implement more data types
-// - Implement symbols as keys
 
 // KNOWLEDGE BASE:
 // - Float64Array for FP

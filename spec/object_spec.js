@@ -38,4 +38,19 @@ describe("object", () => {
 	// TODO: change it once SharedObject is smart enough
 	expect(obj1.foo === obj2).toBe(true);
     });
+
+    it("supports circular object references", () => {
+	let w = new world.World(1024);
+	let obj1 = w.create();
+	let obj2 = w.create();
+
+	obj1.other = obj2;
+	obj2.other = obj1;
+
+	// Don't use expect(obj1.foo) because Jasmine apparently expects a lot of things from
+	// objects passed to expect() we can't do yet
+	// TODO: change it once SharedObject is smart enough
+	expect(obj1.other.other === obj1).toBe(true);
+	expect(obj2.other.other === obj2).toBe(true);
+    });
 });
