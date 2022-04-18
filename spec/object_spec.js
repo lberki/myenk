@@ -26,4 +26,16 @@ describe("object", () => {
 	delete(obj.foo);
 	expect(obj.foo).toBe(undefined);
     });
+
+    it("supports simple object references", () => {
+	let w = new world.World(1024);
+	let obj1 = w.create();
+	let obj2 = w.create();
+	obj1.foo = obj2;
+
+	// Don't use expect(obj1.foo) because Jasmine apparently expects a lot of things from
+	// objects passed to expect() we can't do yet
+	// TODO: change it once SharedObject is smart enough
+	expect(obj1.foo === obj2).toBe(true);
+    });
 });

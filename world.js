@@ -26,8 +26,12 @@ class World {
 
     _proxyFromAddr(addr) {
 	let wr = this.addrToProxy.get(addr);
-	if (result !== undefined) {
-	    return wr.deref();
+	if (wr !== undefined) {
+	    // Do not call deref() twice in case GC happens in between
+	    let existing = wr.deref();
+	    if (existing !== undefined) {
+		return existing;
+	    }
 	}
 
 	let ptr = this.arena.fromAddr(addr);

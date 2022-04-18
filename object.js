@@ -1,13 +1,15 @@
 "use strict";
 
-// FORMAT:
-// - generation counter (int32 is plenty, I guess?)
-// - linked list of (ptr to property name, ptr to property value)
-// - each property is a separate biock (or maybe two for name / value)
-// - Cache (Map or just object) of property addresses, invalidated on generation change
-
 // TODO:
+// - Test circular object references
 // - Deallocate memory when deleting a property (GC is only at the object level)
+// - Implement symbols as keys
+// - Implement GC (and a linked list of every known object)
+//   - Test the complicated WeakRef() system
+// - Implement multiple threads
+//   - Implement a lock
+//   - Wrap shared data structures (Arena + Object header) in a lock
+//   - Test proxy creation in .get()
 // - Implement more data types
 // - Implement symbols as keys
 
@@ -21,6 +23,11 @@ const util = require("util");
 const debuglog = util.debuglog("object");
 
 let ENCODER = new TextEncoder();
+
+const Type = {
+    INTEGER: 1,
+    OBJECT: 2,
+}
 
 function handlerApply(target, thisArg, args) {
     throw new Error("impossible");
@@ -108,6 +115,7 @@ class SharedObject {
 	this._world = world;
 	this._arena = arena;
 	this._ptr = ptr;
+	this._proxy = new WeakRef(new Proxy(this, handlers));
     }
 
     _init() {
@@ -189,7 +197,16 @@ class SharedObject {
 	    return undefined;
 	}
 
-	return cellPtr.get32(3);
+	let bufferType = cellPtr.get32(2);
+	let bufferValue = cellPtr.get32(3);
+
+	if (bufferType === Type.INTEGER) {
+	    return bufferValue;
+	} else if (bufferType == Type.OBJECT) {
+	    return this._world._proxyFromAddr(bufferValue);
+	} else {
+	    throw new Error("not implemented");
+	}
     }
 
     _set(property, value) {
@@ -197,8 +214,20 @@ class SharedObject {
 	    throw new Error("not implemented");
 	}
 
-	if (typeof(value) !== "number" || value < 0 || value > 1000) {
-	    // TODO: this is ridiculously arbitrary
+	let bufferType = -1, bufferValue = -1;
+	if (value[ACTUAL] !== undefined) {
+	    // An object under our control (maybe in a different world!)
+	    if (value[ACTUAL]._world !== this._world) {
+		throw new Error("not supported");
+	    }
+
+	    bufferType = Type.OBJECT;
+	    bufferValue = value[ACTUAL]._ptr._base;
+	} else if (typeof(value) === "number" && value >= 0 && value < 1000) {
+	    // TODO: support every 32-bit number
+	    bufferType = Type.INTEGER;
+	    bufferValue = value;
+	} else {
 	    throw new Error("not implemented");
 	}
 
@@ -221,7 +250,8 @@ class SharedObject {
 
 	}
 
-	cellPtr.set32(3, value);  // We don't care about the type for now
+	cellPtr.set32(2, bufferType);
+	cellPtr.set32(3, bufferValue);
 
 	return true;
     }
@@ -242,7 +272,7 @@ class SharedObject {
     static _createNew(world, arena) {
 	let ptr = arena.alloc(16);
 	let obj = new SharedObject(world, arena, ptr);
-	let proxy = new Proxy(obj, handlers);
+	let proxy = obj._proxy.deref();
 
 	obj._init();
 	world._registerObject(obj, proxy, ptr._base);
@@ -252,13 +282,13 @@ class SharedObject {
 
     static _fromPtr(world, arena, ptr) {
 	let obj = new SharedObject(world, arena, ptr);
-	let proxy = new Proxy(obj, handlers);
+	let proxy = obj._proxy.deref();
 	world._registerObject(obj, proxy);
 
 	// This thread now knows about this object, increase refcount
 	// TODO: protect this with a lock once we have one
 	ptr.set32(3, ptr.get32(3) + 1);
-	return result;
+	return proxy;
     }
 }
 
