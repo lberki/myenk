@@ -7,14 +7,11 @@
 // - Cache (Map or just object) of property addresses, invalidated on generation change
 
 // TODO:
-// - Implement proxy (backed by JS object for the time being)
-// - Implement data storage as above
-// - Implement primitive data types (bigint + float can come later, I don't hate myself)
+// - Deallocate memory when deleting a property (GC is only at the object level)
+// - Implement more data types
 // - Implement symbols as keys
-// - Implement a weak map (WeakMap or WeakRef + FinalizationRegistry) for deallocation
 
 // KNOWLEDGE BASE:
-// - TextEncoder for UTF-8
 // - Float64Array for FP
 // - Bigint manually
 // - Symbol-to-sequence id bimap for Symbols
@@ -38,7 +35,7 @@ function handlerGetPrototypeOf(target) {
 }
 
 function handlerSetPrototypeOf(target, prototype) {
-    throw new Error("unsupported");
+    throw new Error("not supported");
 }
 
 function handlerDefineProperty(target, key, descriptor) {
@@ -93,7 +90,7 @@ const handlers = {
     ownKeys: handlerOwnKeys
 };
 
-const Private = Symbol("SharedObject internals");
+const ACTUAL = Symbol("Actual SharedObject");
 
 // Representation:
 // - pointer to properties (a linked list of (key, value, next) triplets)
@@ -108,29 +105,27 @@ const Private = Symbol("SharedObject internals");
 // - Value
 class SharedObject {
     constructor(world, arena, ptr) {
-	this[Private] = {
-	    _world: world,
-	    _arena: arena,
-	    _ptr: ptr
-	};
+	this._world = world;
+	this._arena = arena;
+	this._ptr = ptr;
     }
 
     _init() {
 	// No fields at the beginning
-	this[Private]._ptr.set32(0, 0);
+	this._ptr.set32(0, 0);
 
 	// generation counter starts from 1 so as not to be confused with random zeroes
-	this[Private]._ptr.set32(1, 1);
-	this[Private]._ptr.set32(2, 0);
-	this[Private]._ptr.set32(3, 1);  // Only this thread knows about this object for now
+	this._ptr.set32(1, 1);
+	this._ptr.set32(2, 0);
+	this._ptr.set32(3, 1);  // Only this thread knows about this object for now
     }
 
     _dispose() {
-	let ptr = this[Private]._ptr;
+	let ptr = this._ptr;
 
 	// TODO: protect this with a lock once we have one
 	ptr.set32(3, ptr.get32(3) - 1);
-	this[Private]._world._deregisterObject(ptr._base);
+	this._world._deregisterObject(ptr._base);
     }
 
     _toBytes(s) {
@@ -151,15 +146,15 @@ class SharedObject {
     }
 
     _findProperty(bytes) {
-	let prevPtr = this[Private]._ptr;
+	let prevPtr = this._ptr;
 	while (true) {
 	    let next = prevPtr.get32(0);
 	    if (next === 0) {
 		break;
 	    }
 
-	    let nextPtr = this[Private]._arena.fromAddr(next);
-	    let keyPtr = this[Private]._arena.fromAddr(nextPtr.get32(1));
+	    let nextPtr = this._arena.fromAddr(next);
+	    let keyPtr = this._arena.fromAddr(nextPtr.get32(1));
 	    let ok = true;
 	    for (let i = 0; i < bytes.length; i++) {
 		if (keyPtr.get8(i) !== bytes[i]) {
@@ -179,8 +174,13 @@ class SharedObject {
     }
 
     _get(property, value) {
+	if (property === ACTUAL) {
+	    // This is for internal use (ACTUAL is hidden from everyoen else)
+	    return this;
+	}
+
 	if (typeof(property) !== "string") {
-	    throw new Error("unsupported");
+	    throw new Error("not implemented");
 	}
 
 	let propBytes = this._toBytes(property);
@@ -194,12 +194,12 @@ class SharedObject {
 
     _set(property, value) {
 	if (typeof(property) !== "string") {
-	    throw new Error("unsupported");
+	    throw new Error("not implemented");
 	}
 
 	if (typeof(value) !== "number" || value < 0 || value > 1000) {
 	    // TODO: this is ridiculously arbitrary
-	    throw new Error("unsupported");
+	    throw new Error("not implemented");
 	}
 
 	let propBytes = this._toBytes(property);
@@ -207,17 +207,17 @@ class SharedObject {
 	if (cellPtr === null) {
 	    // The property does not exist, allocate it
 
-	    let keyPtr = this[Private]._arena.alloc((propBytes.length+3) & ~3);
+	    let keyPtr = this._arena.alloc((propBytes.length+3) & ~3);
 	    for (let i = 0; i < propBytes.length; i++) {
 		keyPtr.set8(i, propBytes[i]);
 	    }
 
-	    cellPtr = this[Private]._arena.alloc(16);
+	    cellPtr = this._arena.alloc(16);
 	    cellPtr.set32(1, keyPtr._base);
 
 	    // Link in the new cell
-	    cellPtr.set32(0, this[Private]._ptr.get32(0));
-	    this[Private]._ptr.set32(0, cellPtr._base);
+	    cellPtr.set32(0, this._ptr.get32(0));
+	    this._ptr.set32(0, cellPtr._base);
 
 	}
 
