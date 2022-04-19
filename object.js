@@ -132,6 +132,9 @@ class SharedObject {
 	// TODO: protect this with a lock once we have one
 	ptr.set32(3, ptr.get32(3) - 1);
 	this._world._deregisterObject(ptr._base);
+
+	this._arena.free(this._ptr);
+	// TODO: and free everything else
     }
 
     _toBytes(s) {
@@ -288,11 +291,6 @@ class SharedObject {
 	ptr.set32(3, ptr.get32(3) + 1);
 	return proxy;
     }
-}
-
-function create(arena) {
-    let obj = new SharedObject(arena);
-    let proxy = new Proxy(obj, handlers);
 }
 
 exports.SharedObject = SharedObject;
