@@ -76,6 +76,44 @@ describe("object", () => {
 	expect(obj.foo).toBe(undefined);
     });
 
+    it("increases refcount on object reference", async () => {
+	let w = new world.World(1024);
+	let obj1 = w.create();
+	let obj2 = w.create();
+	obj1.foo = obj2;
+	obj2 = null;
+
+	let leftBeforeGc = w.arena.left();
+	await forceGc();
+	expect(w.arena.left()).toBe(leftBeforeGc);
+    });
+
+    it("decreases refcount on change object refeence", async () => {
+	let w = new world.World(1024);
+	let obj1 = w.create();
+	let obj2 = w.create();
+	obj1.foo = obj2;
+	obj2 = null;
+	obj1.foo = 1;
+	obj1 = null;
+
+	await forceGc();
+	expect(w.arena.left()).toBe(1024);
+    });
+
+    it("decreases refcount on delete object refeence", async () => {
+	let w = new world.World(1024);
+	let obj1 = w.create();
+	let obj2 = w.create();
+	obj1.foo = obj2;
+	delete obj1.foo;
+	obj1 = null;
+	obj2 = null;
+
+	await forceGc();
+	expect(w.arena.left()).toBe(1024);
+    });
+
     it("supports simple object references", () => {
 	let w = new world.World(1024);
 	let obj1 = w.create();

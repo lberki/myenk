@@ -1,8 +1,6 @@
 "use strict";
 
 // TODO:
-// - Increase/decrease refcount when a reference is added/removed to/from an object
-//   - Also in _delete()
 // - Implement symbols as keys
 // - Implement GC (and a linked list of every known object)
 //   - Test the complicated WeakRef() system
@@ -139,9 +137,29 @@ class SharedObject {
 	}
     }
 
+    _changeRefcount(objPtr, delta) {
+	// TODO: acquire object lock
+	// (and then make sure that the lock for another object is not held to avoid deadlocks)
+	let oldRefcount = objPtr.get32(3);
+	if (oldRefcount === 0) {
+	    throw new Error("impossible");
+	}
+
+	objPtr.set32(3, oldRefcount + delta);
+    }
+
+    _freeValue(cellPtr) {
+	let type = cellPtr.get32(2);
+	if (type === Type.OBJECT) {
+	    this._changeRefcount(this._arena.fromAddr(cellPtr.get32(3)), -1);
+	}
+    }
+
     _freeCell(cellPtr) {
-	this._arena.free(this._arena.fromAddr(cellPtr.get32(1)));
-	this._arena.free(cellPtr);
+	this._freeValue(cellPtr);
+
+	this._arena.free(this._arena.fromAddr(cellPtr.get32(1)));  // Free key
+	this._arena.free(cellPtr);  // Free cell
     }
 
     _free() {
@@ -242,8 +260,7 @@ class SharedObject {
 
 	    bufferType = Type.OBJECT;
 	    bufferValue = value[ACTUAL]._ptr._base;
-
-	    // TODO: increase refcount
+	    this._changeRefcount(value[ACTUAL]._ptr, 1);
 	} else if (typeof(value) === "number" && value >= 0 && value < 1000) {
 	    // TODO: support every 32-bit number
 	    bufferType = Type.INTEGER;
@@ -268,6 +285,8 @@ class SharedObject {
 	    // Link in the new cell
 	    cellPtr.set32(0, this._ptr.get32(0));
 	    this._ptr.set32(0, cellPtr._base);
+	} else {
+	    this._freeValue(cellPtr);
 	}
 
 	cellPtr.set32(2, bufferType);
