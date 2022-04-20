@@ -12,6 +12,15 @@ function nextEvent() {
     });
 }
 
+// I have no idea why *two* event loop iterations need to happen before objects with weak references
+// to them are finalized and their FinalizationRegistry handlers are called but that's demonstrably
+// the case, at least in Node v16.14.2.
+async function forceGc() {
+    await nextEvent();
+    global.gc();
+    await nextEvent();
+}
+
 describe("object", () => {
     it("object smoke test", () => {
 	let w = new world.World(1024);
@@ -25,13 +34,29 @@ describe("object", () => {
 	let obj = w.create();
 	obj = null;
 
-	// I have no idea why *two* event loop iterations need to happen before objects with weak
-	// references to them are finalized and their FinalizationRegistry handlers are called but
-	// that's demonstrably the case, at least in Node v16.14.2.
-	await nextEvent();
-	global.gc();
-	await nextEvent();
+	await forceGc();
+	expect(w.arena.left()).toBe(1024);
+    });
 
+    it("can free property", async () => {
+	let w = new world.World(1024);
+	let obj = w.create();
+	obj.foo = 2;
+	obj.bar = 2;
+	obj = null;
+
+	await forceGc();
+	expect(w.arena.left()).toBe(1024);
+    });
+
+    it("can free deleted property", async () => {
+	let w = new world.World(1024);
+	let obj = w.create();
+	obj.foo = 2;
+	delete obj.foo;
+	obj = null;
+
+	await forceGc();
 	expect(w.arena.left()).toBe(1024);
     });
 

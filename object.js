@@ -1,7 +1,8 @@
 "use strict";
 
 // TODO:
-// - Deallocate memory when deleting a property (GC is only at the object level)
+// - Increase/decrease refcount when a reference is added/removed to/from an object
+//   - Also in _delete()
 // - Implement symbols as keys
 // - Implement GC (and a linked list of every known object)
 //   - Test the complicated WeakRef() system
@@ -15,7 +16,6 @@
 // - Float64Array for FP
 // - Bigint manually
 // - Symbol-to-sequence id bimap for Symbols
-// - --expose-gc exposes global.gc() for debugging
 
 const util = require("util");
 const debuglog = util.debuglog("object");
@@ -130,11 +130,29 @@ class SharedObject {
 	let ptr = this._ptr;
 
 	// TODO: protect this with a lock once we have one
-	ptr.set32(3, ptr.get32(3) - 1);
+	let newRefcount = ptr.get32(3) - 1;
+	ptr.set32(3, newRefcount);
 	this._world._deregisterObject(ptr._base);
 
+	if (newRefcount == 0) {
+	    this._free();
+	}
+    }
+
+    _freeCell(cellPtr) {
+	this._arena.free(this._arena.fromAddr(cellPtr.get32(1)));
+	this._arena.free(cellPtr);
+    }
+
+    _free() {
+	// Walk the property linked list and free each cell (and later, contents)
+	let cell = this._ptr.get32(0);
+	while (cell !== 0) {
+	    let cellPtr = this._arena.fromAddr(cell);
+	    cell = cellPtr.get32(0);
+	    this._freeCell(cellPtr);
+	}
 	this._arena.free(this._ptr);
-	// TODO: and free everything else
     }
 
     _toBytes(s) {
@@ -224,6 +242,8 @@ class SharedObject {
 
 	    bufferType = Type.OBJECT;
 	    bufferValue = value[ACTUAL]._ptr._base;
+
+	    // TODO: increase refcount
 	} else if (typeof(value) === "number" && value >= 0 && value < 1000) {
 	    // TODO: support every 32-bit number
 	    bufferType = Type.INTEGER;
@@ -248,7 +268,6 @@ class SharedObject {
 	    // Link in the new cell
 	    cellPtr.set32(0, this._ptr.get32(0));
 	    this._ptr.set32(0, cellPtr._base);
-
 	}
 
 	cellPtr.set32(2, bufferType);
@@ -265,8 +284,9 @@ class SharedObject {
 	    return true;
 	}
 
-	// TODO: maybe free nexPtr? Or leave that to GC, which will eventually exist?
+	// Unlink the cell and free it
 	prevPtr.set32(0, nextPtr.get32(0));
+	this._freeCell(nextPtr);
 	return true;
     }
 
