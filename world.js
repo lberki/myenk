@@ -5,7 +5,7 @@ let object = require("./object.js");
 
 class World {
     constructor(size) {
-	this.arena = new arena.Arena(size);
+	this.arena = arena.Arena.create(size);
 	this.addrToProxy = new Map();
 	this.registry = new FinalizationRegistry(obj => { obj._dispose(); });
     }

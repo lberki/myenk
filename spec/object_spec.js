@@ -1,5 +1,7 @@
 "use strict";
 
+let worker_threads = require("worker_threads");
+
 let object = require("../object.js");
 let world = require("../world.js");
 
@@ -139,5 +141,19 @@ describe("object", () => {
 	// TODO: change it once SharedObject is smart enough
 	expect(obj1.other.other === obj1).toBe(true);
 	expect(obj2.other.other === obj2).toBe(true);
+    });
+
+    it("multi-threaded smoke test", async () => {
+	let w = new world.World(1024);
+	let signal = new SharedArrayBuffer(4);
+	let i = new Int32Array(signal);
+	let t = new worker_threads.Worker("./spec/object_spec_worker.js", { workerData: {
+	    func: "smokeTest",
+	    signal: signal,
+	    arena: w.arena.bytes,
+	    size: w.arena.size,
+	}});
+
+	Atomics.wait(i, 0, 0, 100);
     });
 });

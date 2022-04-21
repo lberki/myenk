@@ -8,15 +8,20 @@ describe("arena", () => {
     });
 
     it("can allocate", () => {
-	let cut = new arena.Arena(32);
+	let cut = arena.Arena.create(32);
 	let ptr = cut.alloc(28);
 	ptr.set32(0, 1);
 	expect(ptr.get32(0)).toBe(1);
 	expect(cut.left()).toBe(4);
     });
 
+    it("can create from existing", () => {
+	let cut = arena.Arena.create(32);
+	let cut2 = arena.Arena.existing(cut.bytes);
+    });
+
     it("can reallocate freed block", () => {
-	let cut = new arena.Arena(32);
+	let cut = arena.Arena.create(32);
 	let ptr = cut.alloc(28);
 	ptr.set32(2, 1);
 	cut.free(ptr);
@@ -27,7 +32,7 @@ describe("arena", () => {
     });
 
     it("can halve freed block", () => {
-	let cut = new arena.Arena(32);
+	let cut = arena.Arena.create(32);
 	let ptr = cut.alloc(28);
 	cut.free(ptr);
 	let ptr1 = cut.alloc(12);
@@ -37,7 +42,7 @@ describe("arena", () => {
     });
 
     it("can skip block too small", () => {
-	let cut = new arena.Arena(48);
+	let cut = arena.Arena.create(48);
 	let small = cut.alloc(8);
 	let large = cut.alloc(16);
 	small.set32(1, 3);
@@ -55,15 +60,15 @@ describe("arena", () => {
     });
 
     it("can throw OOM", () => {
-	let cut = new arena.Arena(32);
+	let cut = arena.Arena.create(32);
 	expect(() => { cut.alloc(64); }).toThrow();
     });
-    
+
     it("can detect buffer underflow / overflow", () => {
-	let cut = new arena.Arena(32);
+	let cut = arena.Arena.create(32);
 	let ptr = cut.alloc(8);
 
 	expect(() => { ptr.get32(-1) }).toThrow();
-	expect(() => { ptr.get32(2) }).toThrow();	
+	expect(() => { ptr.get32(2) }).toThrow();
     });
 });

@@ -1,6 +1,7 @@
 "use strict";
 
 // TODO:
+// - move freeStart to a field (will be shared with other threads)
 // - Figure out why # private members don't work
 // - Implement statistics (fragmentation, blocks, histogram, etc.)
 
@@ -46,23 +47,43 @@ class Ptr {
 }
 
 class Arena {
-    constructor(size) {
+    constructor(bytes) {
+	this.bytes = bytes;
+	this.uint32 = new Uint32Array(this.bytes);
+	this.uint8 = new Uint8Array(this.bytes);
+	this.size = bytes.byteLength - ARENA_HEADER_SIZE;
+	this.freeStart = ARENA_HEADER_SIZE;
+	this.freeEnd = bytes.byteLength;
+
+	debuglog("created arena(size=%d)", this.size);
+    }
+
+    _init(size) {
+	this.uint32[0] = 0xd1ce4011;  // Magic
+	this.uint32[1] = 0;           // Start of freelist
+	this.uint32[2] = this.size;
+    }
+
+    static create(size) {
 	if (size % 16 !== 0) {
 	    throw new Error("size must be a multiple of 16");
 	}
 
-	this.bytes = new SharedArrayBuffer(ARENA_HEADER_SIZE + size);
-	this.uint32 = new Uint32Array(this.bytes);
-	this.uint8 = new Uint8Array(this.bytes);
-	this.size = size;
-	this.freeStart = ARENA_HEADER_SIZE;
-	this.freeEnd = ARENA_HEADER_SIZE + size;
+	let arena = new Arena(new SharedArrayBuffer(ARENA_HEADER_SIZE + size));
 
-	this.uint32[0] = 0xd1ce4011;  // Magic
-	this.uint32[1] = 0;           // Start of freelist
-	this.uint32[2] = size;
+	arena._init();
+	debuglog("created new arena(size=%d)", size);
+	return arena;
+    }
 
-	debuglog("created arena(size=%d)", size);
+    static existing(sab) {
+	let arena = new Arena(sab);
+	if (arena.uint32[0] != 0xd1ce4011) {
+	    throw new Error("invalid magic " + arena.uint32[0]);
+	}
+
+	debuglog("created arena from existing(size=%d)", arena.size);
+	return arena;
     }
 
     _fromFreeList(size) {
