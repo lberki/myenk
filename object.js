@@ -5,7 +5,7 @@
 // - Implement GC (and a linked list of every known object)
 //   - Test the complicated WeakRef() system
 // - Implement multiple threads
-//   - Implement a lock
+//   - Implement a lock / latch / etc.
 //   - Wrap shared data structures (Arena + Object header) in a lock
 //   - Test proxy creation in .get()
 // - Implement more data types

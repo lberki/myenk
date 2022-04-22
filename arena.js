@@ -50,6 +50,7 @@ class Arena {
     constructor(bytes) {
 	this.bytes = bytes;
 	this.uint32 = new Uint32Array(this.bytes);
+	this.int32 = new Int32Array(this.bytes);
 	this.uint8 = new Uint8Array(this.bytes);
 	this.size = bytes.byteLength - ARENA_HEADER_SIZE;
 	this.freeStart = ARENA_HEADER_SIZE;
