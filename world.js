@@ -1,31 +1,90 @@
 "use strict";
 
 let arena = require("./arena.js");
-let object = require("./object.js");
+
+const PRIVATE = Symbol("Nostrum Private");
+
+// Representation:
+// - Value (specific to object type)
+// - Object type
+// - <reserved for object lock>
+// - Nr. of threads with a reference to this object
+
+class LocalObject {
+    constructor(world, arena, ptr) {
+	this._world = world;
+	this._arena = arena;
+	this._ptr = ptr;
+    }
+
+    _init() {
+	this._ptr.set32(2, 0);
+	this._ptr.set32(3, 1);  // Only this thread knows about this object for now
+    }
+
+    static _changeRefcount(objPtr, delta) {
+	// TODO: acquire object lock
+	// (and then make sure that the lock for another object is not held to avoid deadlocks)
+	let oldRefcount = objPtr.get32(3);
+	if (oldRefcount === 0) {
+	    throw new Error("impossible");
+	}
+
+	objPtr.set32(3, oldRefcount + delta);
+    }
+
+    _dispose() {
+	let ptr = this._ptr;
+
+	// TODO: protect this with a lock once we have one
+	let newRefcount = ptr.get32(3) - 1;
+	ptr.set32(3, newRefcount);
+	this._world._deregisterObject(ptr._base);
+
+	if (newRefcount == 0) {
+	    this._free();
+	}
+    }
+
+    _free() {
+	this._arena.free(this._ptr);
+    }
+}
 
 class World {
     constructor(size) {
 	this.arena = arena.Arena.create(size);
-	this.addrToProxy = new Map();
-	this.registry = new FinalizationRegistry(obj => { obj._dispose(); });
+	this.addrToObject = new Map();
+	this.registry = new FinalizationRegistry(priv => { priv._dispose(); });
     }
 
-    create() {
-	return object.SharedObject._createNew(this, this.arena);
+    static _objectTypes = [];
+
+    static registerObjectType(type) {
+	let index = World._objectTypes.length;
+	World._objectTypes.push(type);
+    }
+
+    create(resultClass, ...args) {
+	let ptr = this.arena.alloc(16);
+	let [priv, pub] = resultClass._create(this, this.arena, ptr);
+	priv._init(...args);
+	this._registerObject(priv, pub, ptr._base);
+	return pub;
     }
 
     _deregisterObject(addr) {
-	this.addrToProxy.delete(addr);
+	this.addrToObject.delete(addr);
     }
 
-    _registerObject(obj, proxy, addr) {
-	let wr = new WeakRef(proxy);
-	this.registry.register(proxy, obj);
-	this.addrToProxy.set(addr, wr);
+    _registerObject(priv, pub, addr) {
+	let wr = new WeakRef(pub);
+	this.registry.register(pub, priv);
+	this.addrToObject.set(addr, wr);
     }
 
-    _proxyFromAddr(addr) {
-	let wr = this.addrToProxy.get(addr);
+    _localFromAddr(addr) {
+	let wr = this.addrToObject.get(addr);
 	if (wr !== undefined) {
 	    // Do not call deref() twice in case GC happens in between
 	    let existing = wr.deref();
@@ -35,9 +94,17 @@ class World {
 	}
 
 	let ptr = this.arena.fromAddr(addr);
-	proxy = object.SharedObject._fromPtr(ptr);
-	return proxy;
+	let type = ptr.get32(1);
+	if (type < 0 || type >= World._objectTypes.length) {
+	    throw new Error("invalid object type in shared buffer: " + type);
+	}
+
+	let result = World._objectTypes[type]._create(this, this.arena, ptr);
+	ptr._changeRefcount(1);
+	return result;
     }
 }
 
 exports.World = World;
+exports.LocalObject = LocalObject;
+exports.PRIVATE = PRIVATE;

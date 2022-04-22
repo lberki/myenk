@@ -8,7 +8,8 @@
 //   - Implement a lock / latch / etc.
 //   - Wrap shared data structures (Arena + Object header) in a lock
 //   - Test proxy creation in .get()
-// - Implement more data types
+// - Implement more JS data types
+// - Figure out how to hide the PRIVATE symbol
 
 // KNOWLEDGE BASE:
 // - Float64Array for FP
@@ -17,6 +18,8 @@
 
 const util = require("util");
 const debuglog = util.debuglog("object");
+
+let world = require("./world.js");
 
 let ENCODER = new TextEncoder();
 
@@ -93,65 +96,33 @@ const handlers = {
     ownKeys: handlerOwnKeys
 };
 
-const ACTUAL = Symbol("Actual SharedObject");
-
-// Representation:
-// - pointer to properties (a linked list of (key, value, next) triplets)
-// - <reserved for generation counter>
-// - <reserved for an eventual lock>
-// - <reserved for nr. of threads with a reference to this object>
+// "value" is a linked list of (key, value, next) triplets
 
 // Linked list elements:
 // - Pointer to next
 // - Key (pointer to bytes)
 // - Type
 // - Value
-class SharedObject {
+class Dictionary extends world.LocalObject {
     constructor(world, arena, ptr) {
-	this._world = world;
-	this._arena = arena;
-	this._ptr = ptr;
-	this._proxy = new WeakRef(new Proxy(this, handlers));
+	super(world, arena, ptr);
     }
+
+    static TYPE = world.World.registerObjectType(Dictionary);
 
     _init() {
+	super._init();
+
+	this._ptr.set32(1, Dictionary.TYPE);
+
 	// No fields at the beginning
 	this._ptr.set32(0, 0);
-
-	// generation counter starts from 1 so as not to be confused with random zeroes
-	this._ptr.set32(1, 1);
-	this._ptr.set32(2, 0);
-	this._ptr.set32(3, 1);  // Only this thread knows about this object for now
-    }
-
-    _dispose() {
-	let ptr = this._ptr;
-
-	// TODO: protect this with a lock once we have one
-	let newRefcount = ptr.get32(3) - 1;
-	ptr.set32(3, newRefcount);
-	this._world._deregisterObject(ptr._base);
-
-	if (newRefcount == 0) {
-	    this._free();
-	}
-    }
-
-    _changeRefcount(objPtr, delta) {
-	// TODO: acquire object lock
-	// (and then make sure that the lock for another object is not held to avoid deadlocks)
-	let oldRefcount = objPtr.get32(3);
-	if (oldRefcount === 0) {
-	    throw new Error("impossible");
-	}
-
-	objPtr.set32(3, oldRefcount + delta);
     }
 
     _freeValue(cellPtr) {
 	let type = cellPtr.get32(2);
 	if (type === Type.OBJECT) {
-	    this._changeRefcount(this._arena.fromAddr(cellPtr.get32(3)), -1);
+	    world.LocalObject._changeRefcount(this._arena.fromAddr(cellPtr.get32(3)), -1);
 	}
     }
 
@@ -170,7 +141,8 @@ class SharedObject {
 	    cell = cellPtr.get32(0);
 	    this._freeCell(cellPtr);
 	}
-	this._arena.free(this._ptr);
+
+	super._free();
     }
 
     _toBytes(s) {
@@ -219,8 +191,8 @@ class SharedObject {
     }
 
     _get(property, value) {
-	if (property === ACTUAL) {
-	    // This is for internal use (ACTUAL is hidden from everyoen else)
+	if (property === world.PRIVATE) {
+	    // This is for internal use (world.PRIVATE is hidden from everyone else)
 	    return this;
 	}
 
@@ -240,7 +212,7 @@ class SharedObject {
 	if (bufferType === Type.INTEGER) {
 	    return bufferValue;
 	} else if (bufferType == Type.OBJECT) {
-	    return this._world._proxyFromAddr(bufferValue);
+	    return this._world._localFromAddr(bufferValue);
 	} else {
 	    throw new Error("not implemented");
 	}
@@ -252,15 +224,15 @@ class SharedObject {
 	}
 
 	let bufferType = -1, bufferValue = -1;
-	if (value[ACTUAL] !== undefined) {
+	if (value[world.PRIVATE] !== undefined) {
 	    // An object under our control (maybe in a different world!)
-	    if (value[ACTUAL]._world !== this._world) {
+	    if (value[world.PRIVATE]._world !== this._world) {
 		throw new Error("not supported");
 	    }
 
 	    bufferType = Type.OBJECT;
-	    bufferValue = value[ACTUAL]._ptr._base;
-	    this._changeRefcount(value[ACTUAL]._ptr, 1);
+	    bufferValue = value[world.PRIVATE]._ptr._base;
+	    world.LocalObject._changeRefcount(value[world.PRIVATE]._ptr, 1);
 	} else if (typeof(value) === "number" && value >= 0 && value < 1000) {
 	    // TODO: support every 32-bit number
 	    bufferType = Type.INTEGER;
@@ -309,27 +281,12 @@ class SharedObject {
 	return true;
     }
 
-    static _createNew(world, arena) {
-	let ptr = arena.alloc(16);
-	let obj = new SharedObject(world, arena, ptr);
-	let proxy = obj._proxy.deref();
+    static _create(world, arena, ptr) {
+	let obj = new Dictionary(world, arena, ptr);
+	let proxy = new Proxy(obj, handlers);
 
-	obj._init();
-	world._registerObject(obj, proxy, ptr._base);
-
-	return proxy;
-    }
-
-    static _fromPtr(world, arena, ptr) {
-	let obj = new SharedObject(world, arena, ptr);
-	let proxy = obj._proxy.deref();
-	world._registerObject(obj, proxy);
-
-	// This thread now knows about this object, increase refcount
-	// TODO: protect this with a lock once we have one
-	ptr.set32(3, ptr.get32(3) + 1);
-	return proxy;
+	return [obj, proxy];
     }
 }
 
-exports.SharedObject = SharedObject;
+exports.Dictionary = Dictionary;
