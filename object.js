@@ -1,6 +1,7 @@
 "use strict";
 
 // TODO:
+// - Add test case to make sure that three-long chain of objects is freed when not referenced
 // - Implement symbols as keys
 // - Implement GC (and a linked list of every known object)
 //   - Test the complicated WeakRef() system
@@ -122,7 +123,7 @@ class Dictionary extends world.LocalObject {
     _freeValue(cellPtr) {
 	let type = cellPtr.get32(2);
 	if (type === Type.OBJECT) {
-	    world.LocalObject._changeRefcount(this._arena.fromAddr(cellPtr.get32(3)), -1);
+	    this._world._changeRefcount(this._arena.fromAddr(cellPtr.get32(3)), -1);
 	}
     }
 
@@ -232,7 +233,7 @@ class Dictionary extends world.LocalObject {
 
 	    bufferType = Type.OBJECT;
 	    bufferValue = value[world.PRIVATE]._ptr._base;
-	    world.LocalObject._changeRefcount(value[world.PRIVATE]._ptr, 1);
+	    this._world._changeRefcount(value[world.PRIVATE]._ptr, 1);
 	} else if (typeof(value) === "number" && value >= 0 && value < 1000) {
 	    // TODO: support every 32-bit number
 	    bufferType = Type.INTEGER;

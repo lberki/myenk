@@ -8,7 +8,7 @@ const PRIVATE = Symbol("Nostrum Private");
 // - Value (specific to object type)
 // - Object type
 // - <reserved for object lock>
-// - Nr. of threads with a reference to this object
+// - Reference count (both in object graph and from threads)
 
 class LocalObject {
     constructor(world, arena, ptr) {
@@ -20,17 +20,6 @@ class LocalObject {
     _init() {
 	this._ptr.set32(2, 0);
 	this._ptr.set32(3, 1);  // Only this thread knows about this object for now
-    }
-
-    static _changeRefcount(objPtr, delta) {
-	// TODO: acquire object lock
-	// (and then make sure that the lock for another object is not held to avoid deadlocks)
-	let oldRefcount = objPtr.get32(3);
-	if (oldRefcount === 0) {
-	    throw new Error("impossible");
-	}
-
-	objPtr.set32(3, oldRefcount + delta);
     }
 
     _dispose() {
@@ -83,7 +72,7 @@ class World {
 	this.addrToObject.set(addr, wr);
     }
 
-    _localFromAddr(addr) {
+    _localFromAddr(addr, forGc=false) {
 	let wr = this.addrToObject.get(addr);
 	if (wr !== undefined) {
 	    // Do not call deref() twice in case GC happens in between
@@ -99,9 +88,29 @@ class World {
 	    throw new Error("invalid object type in shared buffer: " + type);
 	}
 
-	let result = World._objectTypes[type]._create(this, this.arena, ptr);
-	ptr._changeRefcount(1);
-	return result;
+	let [priv, pub] = World._objectTypes[type]._create(this, this.arena, ptr);
+	if (!forGc) {
+	    this._world._changeRefcount(result._ptr, 1);
+	    this._registerObject(priv, pub, addr);
+	}
+	return pub;
+    }
+
+    _changeRefcount(objPtr, delta) {
+	// TODO: acquire object lock
+	// (and then make sure that the lock for another object is not held to avoid deadlocks)
+	let oldRefcount = objPtr.get32(3);
+	if (oldRefcount === 0) {
+	    throw new Error("impossible");
+	}
+
+	let newRefcount = oldRefcount + delta;
+	objPtr.set32(3, newRefcount);
+	if (newRefcount === 0) {
+	    let pub = this._localFromAddr(objPtr._base, true);
+	    pub[PRIVATE]._free();
+
+	}
     }
 }
 

@@ -3,6 +3,7 @@
 let worker_threads = require("worker_threads");
 
 let object = require("../object.js");
+let sync = require("../sync.js");
 let world = require("../world.js");
 
 // Resolves the promise in the next iteration of the event loop.
@@ -141,6 +142,20 @@ describe("object", () => {
 	// TODO: change it once Dictionary is smart enough
 	expect(obj1.other.other === obj1).toBe(true);
 	expect(obj2.other.other === obj2).toBe(true);
+    });
+
+    it("can handle references to non-dictionaries", async () => {
+	let w = new world.World(1024);
+	let obj = w.create(object.Dictionary);
+	let latch = w.create(sync.Latch);  // Latch is chosen randomly
+
+	obj.foo = latch;
+	expect(obj.foo).toBe(latch);
+
+	obj = null;
+	latch = null;
+	await forceGc();
+	expect(w.arena.left()).toBe(1024);
     });
 
     it("multi-threaded smoke test", async () => {
