@@ -1,46 +1,51 @@
 "use strict";
 
 let localobject = require("./localobject.js");
-let world = require("./world.js");
 
 const UINT32_MAX = 4294967295;
 
+// These are set when registering the object types for the world
+let PRIVATE = null;
+let LATCH_BUFFER_TYPE = null;
+
 class LatchHandle {
-    constructor(privateSymbol, latch) {
-	this._PRIVATE = privateSymbol;
-	this[this._PRIVATE] = latch;
+    constructor(latch) {
+	this[PRIVATE] = latch;
 	Object.freeze(this);  // We can't serialize arbitary changes (Dictionary is for that)
     }
 
     dec() {
-	this[this._PRIVATE]._dec();
+	this[PRIVATE]._dec();
     }
 
     wait() {
-	this[this._PRIVATE]._wait();
+	this[PRIVATE]._wait();
     }
 }
 
 class Latch extends localobject.LocalObject {
-    constructor(privateSymbol, world, arena, ptr) {
-	super(privateSymbol, world, arena, ptr);
+    constructor(world, arena, ptr) {
+	super(world, arena, ptr);
 
 	this._ptr = ptr;
 	this._int32 = arena.int32;
 	this._addr = ptr._base / 4;
     }
 
-    static TYPE = world.World.registerObjectType(Latch);
+    static _registerForWorld(privateSymbol, bufferType) {
+	PRIVATE = privateSymbol;
+	LATCH_BUFFER_TYPE = bufferType;
+    }
 
     _init(n) {
 	super._init();
-	this._ptr.set32(1, Latch.TYPE);
+	this._ptr.set32(1, LATCH_BUFFER_TYPE);
 	this._ptr.set32(0, n);
     }
 
-    static _create(privateSymbol, world, arena, ptr) {
-	let latch = new Latch(privateSymbol, world, arena, ptr);
-	return [latch, new LatchHandle(privateSymbol, latch)];
+    static _create(world, arena, ptr) {
+	let latch = new Latch(world, arena, ptr);
+	return [latch, new LatchHandle(latch)];
     }
 
     _dec() {

@@ -1,8 +1,20 @@
 "use strict";
 
 let arena = require("./arena.js");
+let dictionary = require("./dictionary.js");
+let sync = require("./sync.js");
 
 const PRIVATE = Symbol("World Private");
+
+const ObjectTypes = [
+    null,  // marker so that zero is not a valid object type in RAM,
+    dictionary.Dictionary,
+    sync.Latch
+];
+
+for (let i = 1; i < ObjectTypes.length; i++) {
+    ObjectTypes[i]._registerForWorld(PRIVATE, i);
+}
 
 class World {
     constructor(size) {
@@ -13,14 +25,17 @@ class World {
 
     static _objectTypes = [];
 
-    static registerObjectType(type) {
-	let index = World._objectTypes.length;
-	World._objectTypes.push(type);
+    createDictionary(...args) {
+	return this._createObject(dictionary.Dictionary, ...args);
     }
 
-    create(resultClass, ...args) {
+    createLatch(...args) {
+	return this._createObject(sync.Latch, ...args);
+    }
+
+    _createObject(resultClass, ...args) {
 	let ptr = this.arena.alloc(16);
-	let [priv, pub] = resultClass._create(PRIVATE, this, this.arena, ptr);
+	let [priv, pub] = resultClass._create(this, this.arena, ptr);
 	priv._init(...args);
 	this._registerObject(priv, pub, ptr._base);
 	return pub;
@@ -48,11 +63,11 @@ class World {
 
 	let ptr = this.arena.fromAddr(addr);
 	let type = ptr.get32(1);
-	if (type < 0 || type >= World._objectTypes.length) {
+	if (type <= 0 || type >= ObjectTypes.length) {
 	    throw new Error("invalid object type in shared buffer: " + type);
 	}
 
-	let [priv, pub] = World._objectTypes[type]._create(PRIVATE, this, this.arena, ptr);
+	let [priv, pub] = ObjectTypes[type]._create(this, this.arena, ptr);
 	if (!forGc) {
 	    this._world._changeRefcount(result._ptr, 1);
 	    this._registerObject(priv, pub, addr);

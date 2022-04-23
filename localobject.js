@@ -7,8 +7,7 @@
 // - Reference count (both in object graph and from threads)
 
 class LocalObject {
-    constructor(privateSymbol, world, arena, ptr) {
-	this._PRIVATE = privateSymbol;
+    constructor(world, arena, ptr) {
 	this._world = world;
 	this._arena = arena;
 	this._ptr = ptr;

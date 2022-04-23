@@ -20,11 +20,14 @@ const util = require("util");
 const debuglog = util.debuglog("object");
 
 let localobject = require("./localobject.js");
-let world = require("./world.js");
+
+// These are set when registering the object type for the world
+let PRIVATE = null;
+let BUFFER_TYPE = null;
 
 let ENCODER = new TextEncoder();
 
-const Type = {
+const ValueType = {
     INTEGER: 1,
     OBJECT: 2,
 }
@@ -105,16 +108,19 @@ const handlers = {
 // - Type
 // - Value
 class Dictionary extends localobject.LocalObject {
-    constructor(privateSymbol, world, arena, ptr) {
-	super(privateSymbol, world, arena, ptr);
+    constructor(world, arena, ptr) {
+	super(world, arena, ptr);
     }
 
-    static TYPE = world.World.registerObjectType(Dictionary);
+    static _registerForWorld(privateSymbol, bufferType) {
+	PRIVATE = privateSymbol;
+	BUFFER_TYPE = bufferType;
+    }
 
     _init() {
 	super._init();
 
-	this._ptr.set32(1, Dictionary.TYPE);
+	this._ptr.set32(1, BUFFER_TYPE);
 
 	// No fields at the beginning
 	this._ptr.set32(0, 0);
@@ -122,7 +128,7 @@ class Dictionary extends localobject.LocalObject {
 
     _freeValue(cellPtr) {
 	let type = cellPtr.get32(2);
-	if (type === Type.OBJECT) {
+	if (type === ValueType.OBJECT) {
 	    this._world._changeRefcount(this._arena.fromAddr(cellPtr.get32(3)), -1);
 	}
     }
@@ -192,8 +198,8 @@ class Dictionary extends localobject.LocalObject {
     }
 
     _get(property, value) {
-	if (property === this._PRIVATE) {
-	    // This is for internal use (this._PRIVATE is hidden from everyone else)
+	if (property === PRIVATE) {
+	    // This is for internal use (PRIVATE is hidden from everyone else)
 	    return this;
 	}
 
@@ -210,9 +216,9 @@ class Dictionary extends localobject.LocalObject {
 	let bufferType = cellPtr.get32(2);
 	let bufferValue = cellPtr.get32(3);
 
-	if (bufferType === Type.INTEGER) {
+	if (bufferType === ValueType.INTEGER) {
 	    return bufferValue;
-	} else if (bufferType == Type.OBJECT) {
+	} else if (bufferType == ValueType.OBJECT) {
 	    return this._world._localFromAddr(bufferValue);
 	} else {
 	    throw new Error("not implemented");
@@ -225,18 +231,18 @@ class Dictionary extends localobject.LocalObject {
 	}
 
 	let bufferType = -1, bufferValue = -1;
-	if (value[this._PRIVATE] !== undefined) {
+	if (value[PRIVATE] !== undefined) {
 	    // An object under our control (maybe in a different world!)
-	    if (value[this._PRIVATE]._world !== this._world) {
+	    if (value[PRIVATE]._world !== this._world) {
 		throw new Error("not supported");
 	    }
 
-	    bufferType = Type.OBJECT;
-	    bufferValue = value[this._PRIVATE]._ptr._base;
-	    this._world._changeRefcount(value[this._PRIVATE]._ptr, 1);
+	    bufferType = ValueType.OBJECT;
+	    bufferValue = value[PRIVATE]._ptr._base;
+	    this._world._changeRefcount(value[PRIVATE]._ptr, 1);
 	} else if (typeof(value) === "number" && value >= 0 && value < 1000) {
 	    // TODO: support every 32-bit number
-	    bufferType = Type.INTEGER;
+	    bufferType = ValueType.INTEGER;
 	    bufferValue = value;
 	} else {
 	    throw new Error("not implemented");
@@ -282,8 +288,8 @@ class Dictionary extends localobject.LocalObject {
 	return true;
     }
 
-    static _create(privateSymbol, world, arena, ptr) {
-	let obj = new Dictionary(privateSymbol, world, arena, ptr);
+    static _create(world, arena, ptr) {
+	let obj = new Dictionary(world, arena, ptr);
 	let proxy = new Proxy(obj, handlers);
 
 	return [obj, proxy];
