@@ -38,7 +38,7 @@ describe("dictionary", () => {
 	obj = null;
 
 	await forceGc();
-	expect(w.arena.left()).toBe(1024);
+	expect(w.left()).toBe(1024);
     });
 
     it("can free property", async () => {
@@ -49,7 +49,7 @@ describe("dictionary", () => {
 	obj = null;
 
 	await forceGc();
-	expect(w.arena.left()).toBe(1024);
+	expect(w.left()).toBe(1024);
     });
 
     it("can free deleted property", async () => {
@@ -60,7 +60,7 @@ describe("dictionary", () => {
 	obj = null;
 
 	await forceGc();
-	expect(w.arena.left()).toBe(1024);
+	expect(w.left()).toBe(1024);
     });
 
     it("can overwrite property", () => {
@@ -86,9 +86,9 @@ describe("dictionary", () => {
 	obj1.foo = obj2;
 	obj2 = null;
 
-	let leftBeforeGc = w.arena.left();
+	let leftBeforeGc = w.left();
 	await forceGc();
-	expect(w.arena.left()).toBe(leftBeforeGc);
+	expect(w.left()).toBe(leftBeforeGc);
     });
 
     it("decreases refcount on change object refeence", async () => {
@@ -101,7 +101,7 @@ describe("dictionary", () => {
 	obj1 = null;
 
 	await forceGc();
-	expect(w.arena.left()).toBe(1024);
+	expect(w.left()).toBe(1024);
     });
 
     it("decreases refcount on delete object refeence", async () => {
@@ -114,7 +114,7 @@ describe("dictionary", () => {
 	obj2 = null;
 
 	await forceGc();
-	expect(w.arena.left()).toBe(1024);
+	expect(w.left()).toBe(1024);
     });
 
     it("supports simple object references", () => {
@@ -155,7 +155,7 @@ describe("dictionary", () => {
 	obj = null;
 	latch = null;
 	await forceGc();
-	expect(w.arena.left()).toBe(1024);
+	expect(w.left()).toBe(1024);
     });
 
     it("multi-threaded smoke test", async () => {
@@ -165,8 +165,6 @@ describe("dictionary", () => {
 	let t = new worker_threads.Worker("./spec/dictionary_spec_worker.js", { workerData: {
 	    func: "smokeTest",
 	    signal: signal,
-	    arena: w.arena.bytes,
-	    size: w.arena.size,
 	}});
 
 	Atomics.wait(i, 0, 0, 100);

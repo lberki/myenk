@@ -4,7 +4,9 @@ let arena = require("./arena.js");
 let dictionary = require("./dictionary.js");
 let sync = require("./sync.js");
 
-const PRIVATE = Symbol("World Private");
+const PRIVATE = Symbol("World private data");
+
+const OBJECT_SIZE = 16;
 
 const ObjectTypes = [
     null,  // marker so that zero is not a valid object type in RAM,
@@ -18,12 +20,21 @@ for (let i = 1; i < ObjectTypes.length; i++) {
 
 class World {
     constructor(size) {
-	this.arena = arena.Arena.create(size);
-	this.addrToObject = new Map();
-	this.registry = new FinalizationRegistry(priv => { priv._dispose(); });
+	this._arena = arena.Arena.create(size + OBJECT_SIZE);
+	this._addrToObject = new Map();
+	this._registry = new FinalizationRegistry(priv => { priv._dispose(); });
+	this._root = this.createDictionary();
     }
 
     static _objectTypes = [];
+
+    root() {
+	return this._root;
+    }
+
+    left() {
+	return this._arena.left();
+    }
 
     createDictionary(...args) {
 	return this._createObject(dictionary.Dictionary, ...args);
@@ -34,25 +45,25 @@ class World {
     }
 
     _createObject(resultClass, ...args) {
-	let ptr = this.arena.alloc(16);
-	let [priv, pub] = resultClass._create(this, this.arena, ptr);
+	let ptr = this._arena.alloc(OBJECT_SIZE);
+	let [priv, pub] = resultClass._create(this, this._arena, ptr);
 	priv._init(...args);
 	this._registerObject(priv, pub, ptr._base);
 	return pub;
     }
 
     _deregisterObject(addr) {
-	this.addrToObject.delete(addr);
+	this._addrToObject.delete(addr);
     }
 
     _registerObject(priv, pub, addr) {
 	let wr = new WeakRef(pub);
-	this.registry.register(pub, priv);
-	this.addrToObject.set(addr, wr);
+	this._registry.register(pub, priv);
+	this._addrToObject.set(addr, wr);
     }
 
     _localFromAddr(addr, forGc=false) {
-	let wr = this.addrToObject.get(addr);
+	let wr = this._addrToObject.get(addr);
 	if (wr !== undefined) {
 	    // Do not call deref() twice in case GC happens in between
 	    let existing = wr.deref();
@@ -61,13 +72,13 @@ class World {
 	    }
 	}
 
-	let ptr = this.arena.fromAddr(addr);
+	let ptr = this._arena.fromAddr(addr);
 	let type = ptr.get32(1);
 	if (type <= 0 || type >= ObjectTypes.length) {
 	    throw new Error("invalid object type in shared buffer: " + type);
 	}
 
-	let [priv, pub] = ObjectTypes[type]._create(this, this.arena, ptr);
+	let [priv, pub] = ObjectTypes[type]._create(this, this._arena, ptr);
 	if (!forGc) {
 	    this._world._changeRefcount(result._ptr, 1);
 	    this._registerObject(priv, pub, addr);
