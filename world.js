@@ -1,11 +1,15 @@
 "use strict";
 
+const util = require("util");
+const debuglog = util.debuglog("world");
+
 let arena = require("./arena.js");
 let dictionary = require("./dictionary.js");
 let sync = require("./sync.js");
 
 const PRIVATE = Symbol("World private data");
 
+const HEADER_SIZE = 16;
 const OBJECT_SIZE = 16;
 
 const ObjectTypes = [
@@ -19,14 +23,21 @@ for (let i = 1; i < ObjectTypes.length; i++) {
 }
 
 class World {
-    constructor(size) {
-	this._arena = arena.Arena.create(size + OBJECT_SIZE);
+    constructor(a) {
+	this._arena = a;
 	this._addrToObject = new Map();
 	this._registry = new FinalizationRegistry(priv => { priv._dispose(); });
-	this._root = this.createDictionary();
     }
 
     static _objectTypes = [];
+
+    static create(size) {
+	let a = arena.Arena.create(size + HEADER_SIZE + OBJECT_SIZE + 2 * arena.BLOCK_HEADER_SIZE);
+	let header = a.alloc(HEADER_SIZE);
+	let result = new World(a);
+	result._root = result.createDictionary();
+	return result;
+    }
 
     root() {
 	return this._root;
@@ -46,6 +57,7 @@ class World {
 
     _createObject(resultClass, ...args) {
 	let ptr = this._arena.alloc(OBJECT_SIZE);
+	debuglog("allocated " + resultClass.name + " @ " + ptr._base);
 	let [priv, pub] = resultClass._create(this, this._arena, ptr);
 	priv._init(...args);
 	this._registerObject(priv, pub, ptr._base);
@@ -99,7 +111,6 @@ class World {
 	if (newRefcount === 0) {
 	    let pub = this._localFromAddr(objPtr._base, true);
 	    pub[PRIVATE]._free();
-
 	}
     }
 }

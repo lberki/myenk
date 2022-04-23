@@ -9,7 +9,7 @@ describe("arena", () => {
 
     it("can allocate", () => {
 	let cut = arena.Arena.create(32);
-	let ptr = cut.alloc(28);
+	let ptr = cut.alloc(24);
 	ptr.set32(0, 1);
 	expect(ptr.get32(0)).toBe(1);
 	expect(cut.left()).toBe(4);
@@ -22,11 +22,11 @@ describe("arena", () => {
 
     it("can reallocate freed block", () => {
 	let cut = arena.Arena.create(32);
-	let ptr = cut.alloc(28);
+	let ptr = cut.alloc(24);
 	ptr.set32(2, 1);
 	cut.free(ptr);
 	expect(cut.left()).toBe(32);
-	ptr = cut.alloc(28);
+	ptr = cut.alloc(24);
 	expect(ptr.get32(2)).toBe(1);
 	expect(cut.left()).toBe(4);
     });
@@ -36,9 +36,9 @@ describe("arena", () => {
 	let ptr = cut.alloc(28);
 	cut.free(ptr);
 	let ptr1 = cut.alloc(12);
-	expect(cut.left()).toBe(20);
+	expect(cut.left()).toBe(16);
 	let ptr2 = cut.alloc(12);
-	expect(cut.left()).toBe(8);
+	expect(cut.left()).toBe(0);
     });
 
     it("can skip block too small", () => {

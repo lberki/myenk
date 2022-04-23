@@ -62,12 +62,14 @@ class Arena {
     _init(size) {
 	this.uint32[0] = 0xd1ce4011;  // Magic
 	this.uint32[1] = 0;           // Start of freelist
-	this.uint32[2] = this.size;
+	this.uint32[2] = this.size;   // Free space left
+
+	// TODO: put freeEnd here, too
     }
 
     static create(size) {
-	if (size % 16 !== 0) {
-	    throw new Error("size must be a multiple of 16");
+	if (size <= 16) {
+	    throw new Error("invalid size");
 	}
 
 	let arena = new Arena(new SharedArrayBuffer(ARENA_HEADER_SIZE + size));
@@ -130,7 +132,7 @@ class Arena {
 	if (fromFreeList !== null) {
 	    this.uint32[fromFreeList / 4] = size;
 	    debuglog("allocated %d bytes @ %d from freelist", size, fromFreeList);
-	    this.uint32[2] = this.uint32[2] - size;
+	    this.uint32[2] = this.uint32[2] - size - BLOCK_HEADER_SIZE;
 	    return new Ptr(this, fromFreeList);
 	}
 
@@ -143,14 +145,14 @@ class Arena {
 	this.uint32[base / 4] = size;
 
 	debuglog("allocated %d bytes @ %d by expansion", size, base);
-	this.uint32[2] = this.uint32[2] - size;
+	this.uint32[2] = this.uint32[2] - size - BLOCK_HEADER_SIZE;
 	return new Ptr(this, base);
     }
 
     free(ptr) {
 	let size = this.uint32[ptr._base / 4];
 	debuglog("freeing %d bytes @ %d", size, ptr._base);
-	this.uint32[2] = this.uint32[2] + size;
+	this.uint32[2] = this.uint32[2] + size + BLOCK_HEADER_SIZE;
 	let oldFreelistHead = this.uint32[1];
 	ptr.set32(0, oldFreelistHead);
 	this.uint32[1] = ptr._base;
@@ -162,3 +164,4 @@ class Arena {
 }
 
 exports.Arena = Arena;
+exports.BLOCK_HEADER_SIZE = BLOCK_HEADER_SIZE;

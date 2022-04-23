@@ -26,14 +26,14 @@ async function forceGc() {
 
 describe("dictionary", () => {
     it("dictionary smoke test", () => {
-	let w = new world.World(1024);
+	let w = world.World.create(1024);
 	let obj = w.createDictionary();
 	obj.foo = 3;
 	expect(obj.foo).toBe(3);
     });
 
     it("can be freed", async () => {
-	let w = new world.World(1024);
+	let w = world.World.create(1024);
 	let obj = w.createDictionary();
 	obj = null;
 
@@ -42,7 +42,7 @@ describe("dictionary", () => {
     });
 
     it("can free property", async () => {
-	let w = new world.World(1024);
+	let w = world.World.create(1024);
 	let obj = w.createDictionary();
 	obj.foo = 2;
 	obj.bar = 2;
@@ -53,7 +53,7 @@ describe("dictionary", () => {
     });
 
     it("can free deleted property", async () => {
-	let w = new world.World(1024);
+	let w = world.World.create(1024);
 	let obj = w.createDictionary();
 	obj.foo = 2;
 	delete obj.foo;
@@ -64,7 +64,7 @@ describe("dictionary", () => {
     });
 
     it("can overwrite property", () => {
-	let w = new world.World(1024);
+	let w = world.World.create(1024);
 	let obj = w.createDictionary();
 	obj.foo = 3;
 	obj.foo = 4;
@@ -72,7 +72,7 @@ describe("dictionary", () => {
     });
 
     it("can delete property", () => {
-	let w = new world.World(1024);
+	let w = world.World.create(1024);
 	let obj = w.createDictionary();
 	obj.foo = 3;
 	delete(obj.foo);
@@ -80,7 +80,7 @@ describe("dictionary", () => {
     });
 
     it("increases refcount on object reference", async () => {
-	let w = new world.World(1024);
+	let w = world.World.create(1024);
 	let obj1 = w.createDictionary();
 	let obj2 = w.createDictionary();
 	obj1.foo = obj2;
@@ -92,7 +92,7 @@ describe("dictionary", () => {
     });
 
     it("decreases refcount on change object refeence", async () => {
-	let w = new world.World(1024);
+	let w = world.World.create(1024);
 	let obj1 = w.createDictionary();
 	let obj2 = w.createDictionary();
 	obj1.foo = obj2;
@@ -105,7 +105,7 @@ describe("dictionary", () => {
     });
 
     it("decreases refcount on delete object refeence", async () => {
-	let w = new world.World(1024);
+	let w = world.World.create(1024);
 	let obj1 = w.createDictionary();
 	let obj2 = w.createDictionary();
 	obj1.foo = obj2;
@@ -118,7 +118,7 @@ describe("dictionary", () => {
     });
 
     it("supports simple object references", () => {
-	let w = new world.World(1024);
+	let w = world.World.create(1024);
 	let obj1 = w.createDictionary();
 	let obj2 = w.createDictionary();
 	obj1.foo = obj2;
@@ -130,7 +130,7 @@ describe("dictionary", () => {
     });
 
     it("supports circular object references", () => {
-	let w = new world.World(1024);
+	let w = world.World.create(1024);
 	let obj1 = w.createDictionary();
 	let obj2 = w.createDictionary();
 
@@ -145,7 +145,7 @@ describe("dictionary", () => {
     });
 
     it("can handle references to non-dictionaries", async () => {
-	let w = new world.World(1024);
+	let w = world.World.create(1024);
 	let obj = w.createDictionary();
 	let latch = w.createLatch();  // Latch is chosen randomly
 
@@ -159,7 +159,7 @@ describe("dictionary", () => {
     });
 
     it("multi-threaded smoke test", async () => {
-	let w = new world.World(1024);
+	let w = world.World.create(1024);
 	let signal = new SharedArrayBuffer(4);
 	let i = new Int32Array(signal);
 	let t = new worker_threads.Worker("./spec/dictionary_spec_worker.js", { workerData: {
