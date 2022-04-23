@@ -53,19 +53,15 @@ class Arena {
 	this.uint32 = new Uint32Array(this.bytes);
 	this.int32 = new Int32Array(this.bytes);
 	this.uint8 = new Uint8Array(this.bytes);
-	this.size = bytes.byteLength - ARENA_HEADER_SIZE;
-	this.freeStart = ARENA_HEADER_SIZE;
-	this.freeEnd = bytes.byteLength;
 
-	debuglog("created arena(size=%d)", this.size);
+	debuglog("created arena(size=%d)", bytes.byteLength - ARENA_HEADER_SIZE);
     }
 
     _init(size) {
-	this.uint32[0] = MAGIC;       // Magic
-	this.uint32[1] = 0;           // Start of freelist
-	this.uint32[2] = this.size;   // Free space left
-
-	// TODO: put freeEnd here, too
+	this.uint32[0] = MAGIC;  // Magic
+	this.uint32[1] = 0; // Start of freelist
+	this.uint32[2] = this.bytes.byteLength - ARENA_HEADER_SIZE;  // free space left
+	this.uint32[3] = ARENA_HEADER_SIZE;  // high water mark
     }
 
     static create(size) {
@@ -74,8 +70,8 @@ class Arena {
 	}
 
 	let arena = new Arena(new SharedArrayBuffer(ARENA_HEADER_SIZE + size));
-
 	arena._init();
+
 	debuglog("created new arena(size=%d)", size);
 	return arena;
     }
@@ -137,12 +133,15 @@ class Arena {
 	    return new Ptr(this, fromFreeList);
 	}
 
-	let base = this.freeStart;
-	if (base + size + BLOCK_HEADER_SIZE > this.freeEnd) {
+	let base = this.uint32[3];
+	if (base + size + BLOCK_HEADER_SIZE > this.bytes.byteLength) {
 	    throw new Error("out of memory");
 	}
 
-	this.freeStart += size + BLOCK_HEADER_SIZE;
+	// Bump high water mark
+	this.uint32[3] += size + BLOCK_HEADER_SIZE;
+
+	// Set size in block header
 	this.uint32[base / 4] = size;
 
 	debuglog("allocated %d bytes @ %d by expansion", size, base);

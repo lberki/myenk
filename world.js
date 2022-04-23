@@ -36,8 +36,6 @@ class World {
 	this._registry = new FinalizationRegistry(priv => { priv._dispose(); });
     }
 
-    static _objectTypes = [];
-
     static create(size) {
 	// We allocate:
 	// - the size requested
