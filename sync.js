@@ -1,27 +1,29 @@
 "use strict";
 
+let localobject = require("./localobject.js");
 let world = require("./world.js");
 
 const UINT32_MAX = 4294967295;
 
 class LatchHandle {
-    constructor(latch) {
-	this[world.PRIVATE] = latch;
+    constructor(privateSymbol, latch) {
+	this._PRIVATE = privateSymbol;
+	this[this._PRIVATE] = latch;
 	Object.freeze(this);  // We can't serialize arbitary changes (Dictionary is for that)
     }
 
     dec() {
-	this[world.PRIVATE]._dec();
+	this[this._PRIVATE]._dec();
     }
 
     wait() {
-	this[world.PRIVATE]._wait();
+	this[this._PRIVATE]._wait();
     }
 }
 
-class Latch extends world.LocalObject {
-    constructor(world, arena, ptr) {
-	super(world, arena, ptr);
+class Latch extends localobject.LocalObject {
+    constructor(privateSymbol, world, arena, ptr) {
+	super(privateSymbol, world, arena, ptr);
 
 	this._ptr = ptr;
 	this._int32 = arena.int32;
@@ -36,9 +38,9 @@ class Latch extends world.LocalObject {
 	this._ptr.set32(0, n);
     }
 
-    static _create(world, arena, ptr) {
-	let latch = new Latch(world, arena, ptr);
-	return [latch, new LatchHandle(latch)];
+    static _create(privateSymbol, world, arena, ptr) {
+	let latch = new Latch(privateSymbol, world, arena, ptr);
+	return [latch, new LatchHandle(privateSymbol, latch)];
     }
 
     _dec() {

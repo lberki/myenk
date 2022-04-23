@@ -2,43 +2,7 @@
 
 let arena = require("./arena.js");
 
-const PRIVATE = Symbol("Nostrum Private");
-
-// Representation:
-// - Value (specific to object type)
-// - Object type
-// - <reserved for object lock>
-// - Reference count (both in object graph and from threads)
-
-class LocalObject {
-    constructor(world, arena, ptr) {
-	this._world = world;
-	this._arena = arena;
-	this._ptr = ptr;
-    }
-
-    _init() {
-	this._ptr.set32(2, 0);
-	this._ptr.set32(3, 1);  // Only this thread knows about this object for now
-    }
-
-    _dispose() {
-	let ptr = this._ptr;
-
-	// TODO: protect this with a lock once we have one
-	let newRefcount = ptr.get32(3) - 1;
-	ptr.set32(3, newRefcount);
-	this._world._deregisterObject(ptr._base);
-
-	if (newRefcount == 0) {
-	    this._free();
-	}
-    }
-
-    _free() {
-	this._arena.free(this._ptr);
-    }
-}
+const PRIVATE = Symbol("World Private");
 
 class World {
     constructor(size) {
@@ -56,7 +20,7 @@ class World {
 
     create(resultClass, ...args) {
 	let ptr = this.arena.alloc(16);
-	let [priv, pub] = resultClass._create(this, this.arena, ptr);
+	let [priv, pub] = resultClass._create(PRIVATE, this, this.arena, ptr);
 	priv._init(...args);
 	this._registerObject(priv, pub, ptr._base);
 	return pub;
@@ -88,7 +52,7 @@ class World {
 	    throw new Error("invalid object type in shared buffer: " + type);
 	}
 
-	let [priv, pub] = World._objectTypes[type]._create(this, this.arena, ptr);
+	let [priv, pub] = World._objectTypes[type]._create(PRIVATE, this, this.arena, ptr);
 	if (!forGc) {
 	    this._world._changeRefcount(result._ptr, 1);
 	    this._registerObject(priv, pub, addr);
@@ -115,5 +79,3 @@ class World {
 }
 
 exports.World = World;
-exports.LocalObject = LocalObject;
-exports.PRIVATE = PRIVATE;

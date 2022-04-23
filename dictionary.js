@@ -10,7 +10,6 @@
 //   - Wrap shared data structures (Arena + Object header) in a lock
 //   - Test proxy creation in .get()
 // - Implement more JS data types
-// - Figure out how to hide the PRIVATE symbol
 
 // KNOWLEDGE BASE:
 // - Float64Array for FP
@@ -20,6 +19,7 @@
 const util = require("util");
 const debuglog = util.debuglog("object");
 
+let localobject = require("./localobject.js");
 let world = require("./world.js");
 
 let ENCODER = new TextEncoder();
@@ -104,9 +104,9 @@ const handlers = {
 // - Key (pointer to bytes)
 // - Type
 // - Value
-class Dictionary extends world.LocalObject {
-    constructor(world, arena, ptr) {
-	super(world, arena, ptr);
+class Dictionary extends localobject.LocalObject {
+    constructor(privateSymbol, world, arena, ptr) {
+	super(privateSymbol, world, arena, ptr);
     }
 
     static TYPE = world.World.registerObjectType(Dictionary);
@@ -192,8 +192,8 @@ class Dictionary extends world.LocalObject {
     }
 
     _get(property, value) {
-	if (property === world.PRIVATE) {
-	    // This is for internal use (world.PRIVATE is hidden from everyone else)
+	if (property === this._PRIVATE) {
+	    // This is for internal use (this._PRIVATE is hidden from everyone else)
 	    return this;
 	}
 
@@ -225,15 +225,15 @@ class Dictionary extends world.LocalObject {
 	}
 
 	let bufferType = -1, bufferValue = -1;
-	if (value[world.PRIVATE] !== undefined) {
+	if (value[this._PRIVATE] !== undefined) {
 	    // An object under our control (maybe in a different world!)
-	    if (value[world.PRIVATE]._world !== this._world) {
+	    if (value[this._PRIVATE]._world !== this._world) {
 		throw new Error("not supported");
 	    }
 
 	    bufferType = Type.OBJECT;
-	    bufferValue = value[world.PRIVATE]._ptr._base;
-	    this._world._changeRefcount(value[world.PRIVATE]._ptr, 1);
+	    bufferValue = value[this._PRIVATE]._ptr._base;
+	    this._world._changeRefcount(value[this._PRIVATE]._ptr, 1);
 	} else if (typeof(value) === "number" && value >= 0 && value < 1000) {
 	    // TODO: support every 32-bit number
 	    bufferType = Type.INTEGER;
@@ -282,8 +282,8 @@ class Dictionary extends world.LocalObject {
 	return true;
     }
 
-    static _create(world, arena, ptr) {
-	let obj = new Dictionary(world, arena, ptr);
+    static _create(privateSymbol, world, arena, ptr) {
+	let obj = new Dictionary(privateSymbol, world, arena, ptr);
 	let proxy = new Proxy(obj, handlers);
 
 	return [obj, proxy];

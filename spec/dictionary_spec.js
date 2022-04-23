@@ -2,7 +2,7 @@
 
 let worker_threads = require("worker_threads");
 
-let object = require("../object.js");
+let object = require("../dictionary.js");
 let sync = require("../sync.js");
 let world = require("../world.js");
 
@@ -162,7 +162,7 @@ describe("object", () => {
 	let w = new world.World(1024);
 	let signal = new SharedArrayBuffer(4);
 	let i = new Int32Array(signal);
-	let t = new worker_threads.Worker("./spec/object_spec_worker.js", { workerData: {
+	let t = new worker_threads.Worker("./spec/dictionary_spec_worker.js", { workerData: {
 	    func: "smokeTest",
 	    signal: signal,
 	    arena: w.arena.bytes,
