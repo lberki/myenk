@@ -109,17 +109,9 @@ class World {
     }
 
     _dispose(priv) {
-	let ptr = priv._ptr;
-
 	// TODO: protect this with a lock once we have one
-	let newRefcount = ptr.get32(3) - 1;
-	ptr.set32(3, newRefcount);
-	this._deregisterObject(ptr._base);
-
-	if (newRefcount == 0) {
-	    this._header.set32(2, this._header.get32(2) - 1);
-	    priv._free();
-	}
+	this._addrToObject.delete(priv._ptr._base);
+	this._changeRefcount(priv._ptr, -1, priv);
     }
 
     _deregisterObject(addr) {
@@ -156,7 +148,9 @@ class World {
 	return pub;
     }
 
-    _changeRefcount(objPtr, delta) {
+    // If the caller knows the private part of the object, it can pass it here so that it does
+    // not need to be re-created on this thread or looked up in the map
+    _changeRefcount(objPtr, delta, priv=null) {
 	// TODO: acquire object lock
 	// (and then make sure that the lock for another object is not held to avoid deadlocks)
 	let oldRefcount = objPtr.get32(3);
@@ -166,11 +160,19 @@ class World {
 
 	let newRefcount = oldRefcount + delta;
 	objPtr.set32(3, newRefcount);
-	if (newRefcount === 0) {
-	    let pub = this._localFromAddr(objPtr._base, true);
-	    this._header.set32(2, this._header.get32(2) - 1);
-	    pub[PRIVATE]._free();
+	if (newRefcount !== 0) {
+	    return;
 	}
+
+	if (priv === null) {
+	    // We need to have a local object so that we can properly deallocate its data
+	    // structures in the arena
+	    let pub = this._localFromAddr(objPtr._base, true);
+	    priv = pub[PRIVATE];
+	}
+
+	this._header.set32(2, this._header.get32(2) - 1);
+	priv._free();
     }
 }
 

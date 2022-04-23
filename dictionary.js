@@ -240,7 +240,7 @@ class Dictionary extends localobject.LocalObject {
 
 	    bufferType = ValueType.OBJECT;
 	    bufferValue = value[PRIVATE]._ptr._base;
-	    this._world._changeRefcount(value[PRIVATE]._ptr, 1);
+	    this._world._changeRefcount(value[PRIVATE]._ptr, 1, value[PRIVATE]);
 	} else if (typeof(value) === "number" && value >= 0 && value < 1000) {
 	    // TODO: support every 32-bit number
 	    bufferType = ValueType.INTEGER;
