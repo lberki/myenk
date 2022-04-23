@@ -10,6 +10,7 @@ const debuglog = util.debuglog("arena");
 
 const ARENA_HEADER_SIZE = 16;
 const BLOCK_HEADER_SIZE = 4;
+const MAGIC = 0xd1ce4011;
 
 class Ptr {
     constructor(arena, base) {
@@ -60,7 +61,7 @@ class Arena {
     }
 
     _init(size) {
-	this.uint32[0] = 0xd1ce4011;  // Magic
+	this.uint32[0] = MAGIC;       // Magic
 	this.uint32[1] = 0;           // Start of freelist
 	this.uint32[2] = this.size;   // Free space left
 
@@ -81,8 +82,8 @@ class Arena {
 
     static existing(sab) {
 	let arena = new Arena(sab);
-	if (arena.uint32[0] != 0xd1ce4011) {
-	    throw new Error("invalid magic " + arena.uint32[0]);
+	if (arena.uint32[0] != MAGIC) {
+	    throw new Error("invalid arena magic " + arena.uint32[0]);
 	}
 
 	debuglog("created arena from existing(size=%d)", arena.size);
@@ -164,4 +165,5 @@ class Arena {
 }
 
 exports.Arena = Arena;
+exports.ARENA_HEADER_SIZE = ARENA_HEADER_SIZE;
 exports.BLOCK_HEADER_SIZE = BLOCK_HEADER_SIZE;

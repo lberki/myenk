@@ -6,6 +6,8 @@
 // - Implement GC (and a linked list of every known object)
 //   - Test the complicated WeakRef() system
 // - Implement multiple threads
+//   - Put arena start of free block in the buffer (it's a known bug)
+//   - Test buffer sharing on the same thread a bit morex
 //   - Implement a lock / latch / etc.
 //   - Wrap shared data structures (Arena + Object header) in a lock
 //   - Test proxy creation in .get()

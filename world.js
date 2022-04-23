@@ -11,6 +11,7 @@ const PRIVATE = Symbol("World private data");
 
 const HEADER_SIZE = 16;
 const OBJECT_SIZE = 16;
+const MAGIC = 0x1083041d;
 
 const ObjectTypes = [
     null,  // marker so that zero is not a valid object type in RAM,
@@ -22,9 +23,15 @@ for (let i = 1; i < ObjectTypes.length; i++) {
     ObjectTypes[i]._registerForWorld(PRIVATE, i);
 }
 
+// World header:
+// 0: magic (0x1083041d)
+// 1: address of root object
+// 2, 3: reserved
+
 class World {
-    constructor(a) {
+    constructor(a, header) {
 	this._arena = a;
+	this._header = header;
 	this._addrToObject = new Map();
 	this._registry = new FinalizationRegistry(priv => { priv._dispose(); });
     }
@@ -32,10 +39,36 @@ class World {
     static _objectTypes = [];
 
     static create(size) {
+	// We allocate:
+	// - the size requested
+	// - space for the world header
+	// - space for the root objet
+	// - memory block headers for the above two
 	let a = arena.Arena.create(size + HEADER_SIZE + OBJECT_SIZE + 2 * arena.BLOCK_HEADER_SIZE);
 	let header = a.alloc(HEADER_SIZE);
-	let result = new World(a);
+	if (header._base !== arena.ARENA_HEADER_SIZE) {
+	    throw new Error("first block was not at the start of the arena");
+	}
+
+	let result = new World(a, header);
 	result._root = result.createDictionary();
+
+	header.set32(0, MAGIC);
+	header.set32(1, result._root[PRIVATE]._ptr._base);
+
+	return result;
+    }
+
+    static existing(sab) {
+	let a = arena.Arena.existing(sab);
+	let header = a.fromAddr(arena.ARENA_HEADER_SIZE);
+	if (header.get32(0) !== MAGIC) {
+	    throw new Error("invalid world magic" + header.get32(0));
+	}
+
+	let result = new World(a, header);
+	result._root = result._localFromAddr(header.get32(1));
+
 	return result;
     }
 
@@ -45,6 +78,10 @@ class World {
 
     left() {
 	return this._arena.left();
+    }
+
+    buffer() {
+	return this._arena.bytes;
     }
 
     createDictionary(...args) {
@@ -92,7 +129,7 @@ class World {
 
 	let [priv, pub] = ObjectTypes[type]._create(this, this._arena, ptr);
 	if (!forGc) {
-	    this._world._changeRefcount(result._ptr, 1);
+	    this._changeRefcount(ptr, 1);
 	    this._registerObject(priv, pub, addr);
 	}
 	return pub;
