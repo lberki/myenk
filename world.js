@@ -26,7 +26,7 @@ for (let i = 1; i < ObjectTypes.length; i++) {
 // World header:
 // 0: magic (0x1083041d)
 // 1: address of root object
-// 2: object count (not including root object) TODO: implement fullyx
+// 2: object count (not including root object)
 // 3: reserved
 
 class World {
@@ -80,6 +80,10 @@ class World {
 	return this._arena.left();
     }
 
+    objectCount() {
+	return this._header.get32(2);
+    }
+
     buffer() {
 	return this._arena.bytes;
     }
@@ -113,6 +117,7 @@ class World {
 	this._deregisterObject(ptr._base);
 
 	if (newRefcount == 0) {
+	    this._header.set32(2, this._header.get32(2) - 1);
 	    priv._free();
 	}
     }
@@ -163,6 +168,7 @@ class World {
 	objPtr.set32(3, newRefcount);
 	if (newRefcount === 0) {
 	    let pub = this._localFromAddr(objPtr._base, true);
+	    this._header.set32(2, this._header.get32(2) - 1);
 	    pub[PRIVATE]._free();
 	}
     }

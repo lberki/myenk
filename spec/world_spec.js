@@ -31,17 +31,14 @@ describe("world", () => {
 	w1.root().foo = w1.createDictionary();
 	w1.root().foo.bar = 42;
 
-	let before = w1.left();
 	let obj = w2.root().foo;
 	delete w1.root().foo;
 
 	await testutil.forceGc();
-	let after = w1.left();
-
-	expect(w1.left()).toBeLessThan(1024);
+	expect(w1.objectCount()).toBe(1);
 
 	obj = null;
 	await testutil.forceGc();
-	expect(w1.left()).toBe(1024);
+	expect(w1.objectCount()).toBe(0);
     });
 });

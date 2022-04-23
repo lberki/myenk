@@ -6,7 +6,6 @@
 // - Implement GC (and a linked list of every known object)
 //   - Test the complicated WeakRef() system
 // - Implement multiple threads
-//   - Implement object count in World
 //   - Test buffer sharing on the same thread a bit more
 //   - Implement a lock / latch / etc.
 //   - Wrap shared data structures (Arena + Object header) in a lock
