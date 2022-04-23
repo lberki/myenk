@@ -34,7 +34,7 @@ class World {
 	this._arena = a;
 	this._header = header;
 	this._addrToObject = new Map();
-	this._registry = new FinalizationRegistry(priv => { priv._dispose(); });
+	this._registry = new FinalizationRegistry(priv => { this._dispose(priv); });
     }
 
     static create(size) {
@@ -102,6 +102,19 @@ class World {
 	this._registerObject(priv, pub, ptr._base);
 	this._header.set32(2, this._header.get32(2) + 1);
 	return pub;
+    }
+
+    _dispose(priv) {
+	let ptr = priv._ptr;
+
+	// TODO: protect this with a lock once we have one
+	let newRefcount = ptr.get32(3) - 1;
+	ptr.set32(3, newRefcount);
+	this._deregisterObject(ptr._base);
+
+	if (newRefcount == 0) {
+	    priv._free();
+	}
     }
 
     _deregisterObject(addr) {
