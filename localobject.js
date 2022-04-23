@@ -1,5 +1,8 @@
 "use strict";
 
+const util = require("util");
+const debuglog = util.debuglog("localobject");
+
 // Representation:
 // - Value (specific to object type)
 // - Object type

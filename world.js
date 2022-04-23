@@ -26,7 +26,8 @@ for (let i = 1; i < ObjectTypes.length; i++) {
 // World header:
 // 0: magic (0x1083041d)
 // 1: address of root object
-// 2, 3: reserved
+// 2: object count (not including root object) TODO: implement fullyx
+// 3: reserved
 
 class World {
     constructor(a, header) {
@@ -53,6 +54,7 @@ class World {
 
 	header.set32(0, MAGIC);
 	header.set32(1, result._root[PRIVATE]._ptr._base);
+	header.set32(2, 0);
 
 	return result;
     }
@@ -93,9 +95,12 @@ class World {
     _createObject(resultClass, ...args) {
 	let ptr = this._arena.alloc(OBJECT_SIZE);
 	debuglog("allocated " + resultClass.name + " @ " + ptr._base);
+
 	let [priv, pub] = resultClass._create(this, this._arena, ptr);
 	priv._init(...args);
+
 	this._registerObject(priv, pub, ptr._base);
+	this._header.set32(2, this._header.get32(2) + 1);
 	return pub;
     }
 

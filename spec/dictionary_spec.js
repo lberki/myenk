@@ -2,27 +2,10 @@
 
 let worker_threads = require("worker_threads");
 
+let testutil = require("./testutil.js");
 let dictionary = require("../dictionary.js");
 let sync = require("../sync.js");
 let world = require("../world.js");
-
-// Resolves the promise in the next iteration of the event loop.
-// Used to try to make sure garbage collection happens when expected. There are no official
-// guarantees, but it seems to work and is useful for testing.
-function nextEvent() {
-    return new Promise(resolve => {
-	setImmediate(() => { resolve(null) });
-    });
-}
-
-// I have no idea why *two* event loop iterations need to happen before objects with weak references
-// to them are finalized and their FinalizationRegistry handlers are called but that's demonstrably
-// the case, at least in Node v16.14.2.
-async function forceGc() {
-    await nextEvent();
-    global.gc();
-    await nextEvent();
-}
 
 describe("dictionary", () => {
     it("dictionary smoke test", () => {
@@ -37,7 +20,7 @@ describe("dictionary", () => {
 	let obj = w.createDictionary();
 	obj = null;
 
-	await forceGc();
+	await testutil.forceGc();
 	expect(w.left()).toBe(1024);
     });
 
@@ -48,7 +31,7 @@ describe("dictionary", () => {
 	obj.bar = 2;
 	obj = null;
 
-	await forceGc();
+	await testutil.forceGc();
 	expect(w.left()).toBe(1024);
     });
 
@@ -59,7 +42,7 @@ describe("dictionary", () => {
 	delete obj.foo;
 	obj = null;
 
-	await forceGc();
+	await testutil.forceGc();
 	expect(w.left()).toBe(1024);
     });
 
@@ -87,7 +70,7 @@ describe("dictionary", () => {
 	obj2 = null;
 
 	let leftBeforeGc = w.left();
-	await forceGc();
+	await testutil.forceGc();
 	expect(w.left()).toBe(leftBeforeGc);
     });
 
@@ -100,7 +83,7 @@ describe("dictionary", () => {
 	obj1.foo = 1;
 	obj1 = null;
 
-	await forceGc();
+	await testutil.forceGc();
 	expect(w.left()).toBe(1024);
     });
 
@@ -113,7 +96,7 @@ describe("dictionary", () => {
 	obj1 = null;
 	obj2 = null;
 
-	await forceGc();
+	await testutil.forceGc();
 	expect(w.left()).toBe(1024);
     });
 
@@ -154,7 +137,7 @@ describe("dictionary", () => {
 
 	obj = null;
 	latch = null;
-	await forceGc();
+	await testutil.forceGc();
 	expect(w.left()).toBe(1024);
     });
 
