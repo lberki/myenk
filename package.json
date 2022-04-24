@@ -1,8 +1,8 @@
 {
-    "name": "nostrum",
+    "name": "myenk",
     "version": "0.0.1",
     "description": "",
-    "main": "nostrum.js",
+    "main": "myenk.js",
     "scripts": {
 	"test": "node --expose-gc node_modules/.bin/jasmine"
     },
