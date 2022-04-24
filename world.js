@@ -1,5 +1,17 @@
 "use strict";
 
+// TODO: Implement GC like this:
+// 1. Objects are refcounted, on reaching zero, they are freed
+// 2. On object alloc, its address is put on a livelist at the end of the heap, growing downwards,
+//    then its ID (address from top of heap) is put in its header.
+// 3. On object free, the free members of the livelist are maintained in a linked list. Its head
+//    is in the world header, addresses are distinguished from free members by highest/lowest bit.
+// 4. On object alloc, the freelist of the livelist is checked before allocating another member.
+// 5. GC is stop-the-world, mark-and-sweep, reachability is marked either in a bit in object header
+//    or in a high/low bit of the livelist.
+// 6. If we want compaction, object pointers can contain an object ID instead at the cost of an
+//    extra memory reference on access
+
 const util = require("util");
 const debuglog = util.debuglog("world");
 
