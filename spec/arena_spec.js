@@ -15,6 +15,22 @@ describe("arena", () => {
 	expect(cut.left()).toBe(4);
     });
 
+    it("returns size", () => {
+	let cut = arena.Arena.create(128);
+	let ptr = cut.alloc(60);
+	expect(ptr.size()).toBe(60);
+    });
+
+    it("rounds up allocations", () => {
+	let cut = arena.Arena.create(32);
+	let ptr = cut.alloc(1);
+	expect(ptr.size()).toBe(1);
+	expect(cut.left()).toBe(24);  // alloc: 4 (rounded up) + 4 (header)
+	expect(() => { ptr.get8(1); }).toThrow();
+	cut.free(ptr);
+	expect(cut.left()).toBe(32);
+    });
+
     it("can create from existing", () => {
 	let cut = arena.Arena.create(32);
 	let cut2 = arena.Arena.existing(cut.bytes);

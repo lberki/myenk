@@ -62,6 +62,28 @@ describe("dictionary", () => {
 	expect(obj.foo).toBe(undefined);
     });
 
+    it("supports string values", async () => {
+	let w = world.World.create(1024);
+	let obj = w.createDictionary();
+	obj.foo = "bar";
+	expect(obj.foo).toBe("bar");
+
+	obj = null;
+	await testutil.forceGc();
+	expect(w.left()).toBe(1024);
+    });
+
+    it("supports empty strings", async () => {
+	let w = world.World.create(1024);
+	let obj = w.createDictionary();
+	obj.foo = "";
+	expect(obj.foo).toBe("");
+
+	obj = null;
+	await testutil.forceGc();
+	expect(w.left()).toBe(1024);
+    });
+
     it("increases refcount on object reference", async () => {
 	let w = world.World.create(1024);
 	let obj1 = w.createDictionary();

@@ -10,7 +10,7 @@
 //   - Implement a lock / latch / etc.
 //   - Wrap shared data structures (Arena + Object header) in a lock
 //   - Test proxy creation in .get()
-// - Implement more JS data types
+// - Implement more JS data types (mainly Array)
 
 // KNOWLEDGE BASE:
 // - Float64Array for FP
@@ -27,10 +27,12 @@ let PRIVATE = null;
 let BUFFER_TYPE = null;
 
 let ENCODER = new TextEncoder();
+let DECODER = new TextDecoder();
 
 const ValueType = {
     INTEGER: 1,
     OBJECT: 2,
+    STRING: 3,
 }
 
 function handlerApply(target, thisArg, args) {
@@ -129,8 +131,14 @@ class Dictionary extends localobject.LocalObject {
 
     _freeValue(cellPtr) {
 	let type = cellPtr.get32(2);
+	let valueBytes = cellPtr.get32(3);
+
 	if (type === ValueType.OBJECT) {
-	    this._world._changeRefcount(this._arena.fromAddr(cellPtr.get32(3)), -1);
+	    this._world._changeRefcount(this._arena.fromAddr(valueBytes), -1);
+	} else if (type === ValueType.STRING) {
+	    if (valueBytes !== 0) {
+		this._arena.free(this._arena.fromAddr(valueBytes));
+	    }
 	}
     }
 
@@ -153,23 +161,6 @@ class Dictionary extends localobject.LocalObject {
 	super._free();
     }
 
-    _toBytes(s) {
-	// TODO: handle Symbols. This is why this needs to be an instance method
-	// TODO: Ths is ridiculously inefficient, both in RAM and CPU
-	let textBytes = ENCODER.encode(s);
-	let bytes = new Uint8Array(textBytes.length + 4);
-	bytes[0] = textBytes.length >> 24;
-	bytes[1] = (textBytes.length & 0xffffff) >> 16;
-	bytes[2] = (textBytes.length & 0xffff) >> 8;
-	bytes[3] = textBytes.length & 0xff;
-
-	for (let i = 0; i < textBytes.length; i++) {
-	    bytes[i+4] = textBytes[i];
-	}
-
-	return bytes;
-    }
-
     _findProperty(bytes) {
 	let prevPtr = this._ptr;
 	while (true) {
@@ -181,10 +172,15 @@ class Dictionary extends localobject.LocalObject {
 	    let nextPtr = this._arena.fromAddr(next);
 	    let keyPtr = this._arena.fromAddr(nextPtr.get32(1));
 	    let ok = true;
-	    for (let i = 0; i < bytes.length; i++) {
-		if (keyPtr.get8(i) !== bytes[i]) {
-		    ok = false;
-		    break;
+
+	    if (keyPtr.size() !== bytes.length) {
+		ok = false;
+	    } else {
+		for (let i = 0; i < bytes.length; i++) {
+		    if (keyPtr.get8(i) !== bytes[i]) {
+			ok = false;
+			break;
+		    }
 		}
 	    }
 
@@ -208,7 +204,7 @@ class Dictionary extends localobject.LocalObject {
 	    throw new Error("not implemented");
 	}
 
-	let propBytes = this._toBytes(property);
+	let propBytes = ENCODER.encode(property);
 	let [_, cellPtr] = this._findProperty(propBytes);
 	if (cellPtr === null) {
 	    return undefined;
@@ -221,6 +217,13 @@ class Dictionary extends localobject.LocalObject {
 	    return bufferValue;
 	} else if (bufferType == ValueType.OBJECT) {
 	    return this._world._localFromAddr(bufferValue);
+	} else if (bufferType == ValueType.STRING) {
+	    if (bufferValue === 0) {
+		return "";
+	    } else {
+		let valuePtr = this._arena.fromAddr(bufferValue);
+		return DECODER.decode(valuePtr.asUint8());
+	    }
 	} else {
 	    throw new Error("not implemented");
 	}
@@ -245,20 +248,27 @@ class Dictionary extends localobject.LocalObject {
 	    // TODO: support every 32-bit number
 	    bufferType = ValueType.INTEGER;
 	    bufferValue = value;
+	} else if (typeof(value) === "string") {
+	    bufferType = ValueType.STRING;
+
+	    let valueBytes = ENCODER.encode(value);
+	    if (value === "") {
+		bufferValue = 0;
+	    } else {
+		let valuePtr = this._arena.alloc(valueBytes.length);
+		valuePtr.asUint8().set(valueBytes);
+		bufferValue = valuePtr._base;
+	    }
 	} else {
 	    throw new Error("not implemented");
 	}
 
-	let propBytes = this._toBytes(property);
+	let propBytes = ENCODER.encode(property);
 	let [_, cellPtr] = this._findProperty(propBytes);
 	if (cellPtr === null) {
 	    // The property does not exist, allocate it
-
-	    let keyPtr = this._arena.alloc((propBytes.length+3) & ~3);
-	    for (let i = 0; i < propBytes.length; i++) {
-		keyPtr.set8(i, propBytes[i]);
-	    }
-
+	    let keyPtr = this._arena.alloc(propBytes.length);
+	    keyPtr.asUint8().set(propBytes);
 	    cellPtr = this._arena.alloc(16);
 	    cellPtr.set32(1, keyPtr._base);
 
@@ -276,7 +286,7 @@ class Dictionary extends localobject.LocalObject {
     }
 
     _deleteProperty(property) {
-	let propBytes = this._toBytes(property);
+	let propBytes = ENCODER.encode(property);
 	let [prevPtr, nextPtr] = this._findProperty(propBytes);
 
 	if (prevPtr === null) {

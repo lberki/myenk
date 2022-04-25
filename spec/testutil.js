@@ -22,10 +22,25 @@ async function forceGc() {
     await nextEvent();
 }
 
+class WorkerProxy {
+    constructor(w, worker) {
+	this._w = w;
+	this._worker = worker;
+    }
+
+    waitFor(name) {
+	this._w.root().__testLatches[name].wait();
+    }
+
+    done(name) {
+	this._w.root().__testLatches[name].dec();
+    }
+}
+
 function spawnWorker(w, js, fn, latches) {
     w.root().__testLatches = w.createDictionary();
     for (let l of latches) {
-	w.root().__testLatches[l] = w.createLatch();
+	w.root().__testLatches[l] = w.createLatch(1);
     }
 
     let worker = new worker_threads.Worker("./spec/testutil_worker.js", {
@@ -37,7 +52,7 @@ function spawnWorker(w, js, fn, latches) {
 	}
     });
 
-    return worker;
+    return new WorkerProxy(w, worker);
 }
 
 exports.forceGc = forceGc;

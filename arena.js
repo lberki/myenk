@@ -25,6 +25,14 @@ class Ptr {
 	}
     }
 
+    asUint8() {
+	return new Uint8Array(this._arena.bytes, this._base + BLOCK_HEADER_SIZE, this.size());
+    }
+
+    size() {
+	return this._arena.uint32[this._base / 4];
+    }
+
     get8(i) {
 	this._boundsCheck(i);
 	return this._arena.uint8[this._base + BLOCK_HEADER_SIZE + i];
@@ -121,38 +129,36 @@ class Arena {
     }
 
     alloc(size) {
-	if (size <= 0 || (size % 4) !== 0) {
-	    throw new Error("invalid size");
-	}
-
-	let fromFreeList = this._fromFreeList(size);
+	let allocSize = (size + 3) & ~3;  // Round up to the nearest multiple of 4
+	let fromFreeList = this._fromFreeList(allocSize);
 	if (fromFreeList !== null) {
 	    this.uint32[fromFreeList / 4] = size;
 	    debuglog("allocated %d bytes @ %d from freelist", size, fromFreeList);
-	    this.uint32[2] = this.uint32[2] - size - BLOCK_HEADER_SIZE;
+	    this.uint32[2] = this.uint32[2] - allocSize - BLOCK_HEADER_SIZE;
 	    return new Ptr(this, fromFreeList);
 	}
 
 	let base = this.uint32[3];
-	if (base + size + BLOCK_HEADER_SIZE > this.bytes.byteLength) {
+	if (base + allocSize + BLOCK_HEADER_SIZE > this.bytes.byteLength) {
 	    throw new Error("out of memory");
 	}
 
 	// Bump high water mark
-	this.uint32[3] += size + BLOCK_HEADER_SIZE;
+	this.uint32[3] += allocSize + BLOCK_HEADER_SIZE;
 
 	// Set size in block header
 	this.uint32[base / 4] = size;
 
 	debuglog("allocated %d bytes @ %d by expansion", size, base);
-	this.uint32[2] = this.uint32[2] - size - BLOCK_HEADER_SIZE;
+	this.uint32[2] = this.uint32[2] - allocSize - BLOCK_HEADER_SIZE;
 	return new Ptr(this, base);
     }
 
     free(ptr) {
 	let size = this.uint32[ptr._base / 4];
+	let allocSize = (size + 3) & ~3;
 	debuglog("freeing %d bytes @ %d", size, ptr._base);
-	this.uint32[2] = this.uint32[2] + size + BLOCK_HEADER_SIZE;
+	this.uint32[2] = this.uint32[2] + allocSize + BLOCK_HEADER_SIZE;
 	let oldFreelistHead = this.uint32[1];
 	ptr.set32(0, oldFreelistHead);
 	this.uint32[1] = ptr._base;
