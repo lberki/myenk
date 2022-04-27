@@ -1,5 +1,6 @@
 "use strict";
 
+let arena = require("./arena.js");
 let localobject = require("./localobject.js");
 
 const UINT32_MAX = 4294967295;
@@ -11,7 +12,7 @@ let LATCH_BUFFER_TYPE = null;
 class LatchHandle {
     constructor(latch) {
 	this[PRIVATE] = latch;
-	Object.freeze(this);  // We can't serialize arbitary changes (Dictionary is for that)
+	Object.freeze(this);  // We can't serialize arbitrary changes (Dictionary is for that)
     }
 
     dec() {
@@ -24,12 +25,12 @@ class LatchHandle {
 }
 
 class Latch extends localobject.LocalObject {
-    constructor(world, arena, ptr) {
-	super(world, arena, ptr);
+    constructor(_world, _arena, _ptr) {
+	super(_world, _arena, _ptr);
 
-	this._ptr = ptr;
-	this._int32 = arena.int32;
-	this._addr = ptr._base / 4;
+	this._ptr = _ptr;
+	this._int32 = _arena.int32;
+	this._addr = (_ptr._base + arena.BLOCK_HEADER_SIZE) / 4;
     }
 
     static _registerForWorld(privateSymbol, bufferType) {
@@ -50,21 +51,19 @@ class Latch extends localobject.LocalObject {
 
     _dec() {
 	while (true) {
-	    let old = Atomics.load(this._int32, this._addr);
-	    if (old === 0) {
+	    let old = Atomics.sub(this._int32, this._addr, 1);
+	    if (old <= 0) {
+		// If so, the latch is hosed but the code is buggy anyway so it does not matter
 		throw new Error("latch cannot be decreased under zero");
 	    }
 
-	    let probe = Atomics.compareExchange(this._int32, this._addr, old, old-1);
-	    if (probe === old) {
-		// Successfully decreased while no one else did at the same time.
-		if (old === 0) {
-		    // We are the lucky thread that got the latch to zero. Tell everyone.
-		    Atomics.notify(this._int32, this._addr);
-		}
-		return;
-
+	    if (old === 1) {
+		// We are the lucky thread that got the latch to zero. Tell everyone.
+		Atomics.notify(this._int32, this._addr);
 	    }
+
+	    // Haven't reached zero yet, move along
+	    return;
 	}
     }
 
@@ -76,10 +75,13 @@ class Latch extends localobject.LocalObject {
 		return;
 	    }
 
-	    if (Atomics.wait(this._int32, this._addr, old) === "ok") {
+	    let result = Atomics.wait(this._int32, this._addr, old);
+	    if (result === "ok") {
 		// Nothing happened between the load() and the wait() and the latch eventually
 		// reached zero
 		return;
+	    } else if (result === "timed-out") {
+		throw new Error("timeout");
 	    }
 
 	    // The latch was changed in between. Try again.

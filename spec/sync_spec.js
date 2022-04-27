@@ -13,11 +13,19 @@ describe("sync", () => {
 
     it("Latch smoke test", () => {
 	let w = world.World.create(1024);
-	w.root().foo = 1;
+	w.root().foo = "start";
 	let t = testutil.spawnWorker(
 	    w, "sync_spec_worker.js", "latchSmokeTest",
-	    ["phase1", "phase2"]);
+	    ["one", "two", "three", "four", "five"]);
 
-	Atomics.wait(w._arena.int32, 1, 0, 500);
+	t.wait("one");
+	w.root().foo += " main2";
+	t.done("two");
+	t.wait("three");
+	w.root().foo += " main4";
+	t.done("four");
+	t.wait("five");
+
+	expect(w.root().foo).toBe("start worker1 main2 worker3 main4 worker5");
     });
 });

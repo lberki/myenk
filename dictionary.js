@@ -7,7 +7,7 @@
 //   - Test the complicated WeakRef() system
 // - Implement multiple threads
 //   - Test buffer sharing on the same thread a bit more
-//   - Implement a lock / latch / etc.
+//   - Implement a lock and other synchronization tools
 //   - Wrap shared data structures (Arena + Object header) in a lock
 //   - Test proxy creation in .get()
 // - Implement more JS data types (mainly Array)

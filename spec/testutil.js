@@ -1,6 +1,8 @@
 "use strict";
 
-let worker_threads = require("worker_threads");
+const util = require("util");
+const debuglog = util.debuglog("testutil_worker");
+const worker_threads = require("worker_threads");
 
 let world = require("../world.js");
 
@@ -28,11 +30,13 @@ class WorkerProxy {
 	this._worker = worker;
     }
 
-    waitFor(name) {
+    wait(name) {
+	debuglog("wait " + name);
 	this._w.root().__testLatches[name].wait();
     }
 
     done(name) {
+	debuglog("done " + name);
 	this._w.root().__testLatches[name].dec();
     }
 }
