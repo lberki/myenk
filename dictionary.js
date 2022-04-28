@@ -1,13 +1,14 @@
 "use strict";
 
 // TODO:
+// - Figure out why the latch test case is slow (150ms per iteration!)
 // - Add test case to make sure that three-long chain of objects is freed when not referenced
 // - Implement symbols as keys
 // - Implement GC (and a linked list of every known object)
 //   - Test the complicated WeakRef() system
 // - Implement multiple threads
 //   - Test buffer sharing on the same thread a bit more
-//   - Implement a lock and other synchronization tools
+//   - Implement more synchronization tools
 //   - Wrap shared data structures (Arena + Object header) in a lock
 //   - Test proxy creation in .get()
 // - Implement more JS data types (mainly Array)
@@ -244,7 +245,7 @@ class Dictionary extends localobject.LocalObject {
 	    bufferType = ValueType.OBJECT;
 	    bufferValue = value[PRIVATE]._ptr._base;
 	    this._world._changeRefcount(value[PRIVATE]._ptr, 1, value[PRIVATE]);
-	} else if (typeof(value) === "number" && value >= 0 && value < 1000) {
+	} else if (typeof(value) === "number" && value >= 0 && value < 100*1000*1000) {
 	    // TODO: support every 32-bit number
 	    bufferType = ValueType.INTEGER;
 	    bufferValue = value;
@@ -260,6 +261,7 @@ class Dictionary extends localobject.LocalObject {
 		bufferValue = valuePtr._base;
 	    }
 	} else {
+	    console.log(value);
 	    throw new Error("not implemented");
 	}
 

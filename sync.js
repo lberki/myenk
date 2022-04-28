@@ -8,6 +8,61 @@ const UINT32_MAX = 4294967295;
 // These are set when registering the object types for the world
 let PRIVATE = null;
 let LATCH_BUFFER_TYPE = null;
+let LOCK_BUFFER_TYPE = null;
+
+class LockHandle {
+    constructor(lock) {
+	this[PRIVATE] = lock;
+	Object.freeze(this);  // We can't serialize arbitrary changes (Dictionary is for that)
+    }
+
+    lock() {
+	this[PRIVATE]._lock();
+    }
+
+    unlock() {
+	this[PRIVATE]._unlock();
+    }
+}
+
+class Lock extends localobject.LocalObject {
+    constructor(_world, _arena, _ptr) {
+	super(_world, _arena, _ptr);
+
+	this._ptr = _ptr;
+	this._int32 = _arena.int32;
+	this._addr = (_ptr._base + arena.BLOCK_HEADER_SIZE) / 4;
+    }
+
+    static FREE = 0;
+    static LOCKED_NO_WAITERS = 1;
+    static LOCKED_AND_WAITERS = 2;
+
+    static _registerForWorld(privateSymbol, bufferType) {
+	PRIVATE = privateSymbol;
+	LOCK_BUFFER_TYPE = bufferType;
+    }
+
+    _init(n) {
+	super._init();
+	this._ptr.set32(1, LOCK_BUFFER_TYPE);
+	this._int32[this._addr] = Lock.FREE;
+    }
+
+    static _create(world, arena, ptr) {
+	let lock = new Lock(world, arena, ptr);
+	return [lock, new LockHandle(lock)];
+    }
+
+    _lock() {
+	// TODO
+    }
+
+
+    _unlock() {
+	// TODO
+    }
+}
 
 class LatchHandle {
     constructor(latch) {
@@ -90,3 +145,4 @@ class Latch extends localobject.LocalObject {
 }
 
 exports.Latch = Latch;
+exports.Lock = Lock;

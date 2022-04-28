@@ -28,7 +28,8 @@ const MAGIC = 0x1083041d;
 const ObjectTypes = [
     null,  // marker so that zero is not a valid object type in RAM,
     dictionary.Dictionary,
-    sync.Latch
+    sync.Latch,
+    sync.Lock
 ];
 
 for (let i = 1; i < ObjectTypes.length; i++) {
@@ -106,6 +107,10 @@ class World {
 
     createLatch(...args) {
 	return this._createObject(sync.Latch, ...args);
+    }
+
+    createLock(...args) {
+	return this._createObject(sync.Lock, ...args);
     }
 
     _createObject(resultClass, ...args) {

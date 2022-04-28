@@ -6,6 +6,12 @@ const worker_threads = require("worker_threads");
 
 let world = require("../world.js");
 
+function sleep(ms) {
+    return new Promise(resolve => {
+	setTimeout(() => { resolve(null); }, ms);
+    });
+}
+
 // Resolves the promise in the next iteration of the event loop.
 // Used to try to make sure garbage collection happens when expected. There are no official
 // guarantees, but it seems to work and is useful for testing.
@@ -41,7 +47,7 @@ class WorkerProxy {
     }
 }
 
-function spawnWorker(w, js, fn, latches) {
+function spawnWorker(w, js, fn, param, latches) {
     w.root().__testLatches = w.createDictionary();
     for (let l of latches) {
 	w.root().__testLatches[l] = w.createLatch(1);
@@ -51,13 +57,15 @@ function spawnWorker(w, js, fn, latches) {
 	workerData: {
 	    js: js,
 	    fn: fn,
+	    param: param,
 	    buffer: w.buffer(),
-	    latches: latches,
+	    latches: latches
 	}
     });
 
     return new WorkerProxy(w, worker);
 }
 
+exports.sleep = sleep;
 exports.forceGc = forceGc;
 exports.spawnWorker = spawnWorker;
