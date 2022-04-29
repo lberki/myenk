@@ -55,12 +55,34 @@ class Lock extends localobject.LocalObject {
     }
 
     _lock() {
-	// TODO
+	let old = Atomics.compareExchange(this._int32, this._addr, Lock.FREE, Lock.LOCKED_NO_WAITERS);
+	if (old === Lock.FREE) {
+	    return;  // Fast path. No contention.
+	}
+
+	while (true) {
+	    // Signal that we are waiting for the lock.
+	    old = Atomics.exchange(this._int32, this._addr, Lock.LOCKED_AND_WAITERS);
+
+	    if (old === Lock.FREE) {
+		// ...but if it was this thread that flipped the lock to non-free, it is ours.
+		return;
+	    }
+
+	    // Otherwise, the lock is now in "locked with maybe waiters" state and we are one of
+	    // those waiters. Wait until the lock is unlocked.
+	    let result = Atomics.wait(this._int32, this._addr, Lock.LOCKED_AND_WAITERS);
+	}
     }
 
 
     _unlock() {
-	// TODO
+	let old = Atomics.exchange(this._int32, this._addr, Lock.FREE);
+	if (old === Lock.LOCKED_AND_WAITERS) {
+	    // If there may be waiters, signal one of them. If there weren't, the only harm done is
+	    // an extra system call.
+	    Atomics.notify(this._int32, this._addr, 1);
+	}
     }
 }
 
