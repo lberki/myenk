@@ -62,6 +62,17 @@ describe("dictionary", () => {
 	expect(obj.foo).toBe(undefined);
     });
 
+    it("can check for property presence", () => {
+	let w = world.World.create(1024);
+	let obj = w.createDictionary();
+
+	obj.foo = 3;
+	expect("foo" in obj).toBe(true);
+
+	delete obj.foo;
+	expect("foo" in obj).toBe(false);
+    });
+
     it("supports string values", async () => {
 	let w = world.World.create(1024);
 	let obj = w.createDictionary();
@@ -163,15 +174,33 @@ describe("dictionary", () => {
 	expect(w.left()).toBe(1024);
     });
 
-    it("multi-threaded smoke test", async () => {
-	let w = world.World.create(1024);
-	let signal = new SharedArrayBuffer(4);
-	let i = new Int32Array(signal);
-	let t = new worker_threads.Worker("./spec/dictionary_spec_worker.js", { workerData: {
-	    func: "smokeTest",
-	    signal: signal,
-	}});
+    // it("multi-threaded single-dictionary stress test", async () => {
+    // 	const NUM_WORKERS = 4;
 
-	Atomics.wait(i, 0, 0, 100);
-    });
+    // 	let w = world.World.create(1024);
+    // 	w.root().start = w.createLatch(1);
+
+    // 	let workers = new Array();
+    // 	for (let i = 0; i < NUM_WORKERS; i++) {
+    // 	    w.root()["latch_" + i] = w.createLatch(1);
+    // 	    workers.push(testutil.spawnWorker(
+    // 		w, "dictionary_spec_worker.js", "singleDictionaryStressTest",
+    // 		i, []));
+    // 	}
+
+    // 	let leftBefore = w.left();
+    // 	let objectCountBefore = w.objectCount();
+    // 	w.root().obj = w.createDictionary();
+
+    // 	w.root().start.dec();
+
+    // 	for (let i = 0; i < NUM_WORKERS; i++) {
+    // 	    w.root()["latch_" + i].wait();
+    // 	}
+
+    // 	delete w.root().obj;
+    // 	await testutil.forceGc();
+    // 	expect(w.objectCount()).toBe(objectCountBefore);
+    // 	expect(w.left()).toBe(leftBefore);
+    // });
 });

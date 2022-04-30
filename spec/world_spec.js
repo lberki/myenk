@@ -41,4 +41,18 @@ describe("world", () => {
 	await testutil.forceGc();
 	expect(w1.objectCount()).toBe(0);
     });
+
+    // it("can clean up reference cycles", async () => {
+    // 	let w = world.World.create(1024);
+    // 	w.root().foo = w.createDictionary();
+    // 	w.root().bar = w.createDictionary();
+    // 	w.root().foo.bar = w.root().bar;
+    // 	w.root().bar.foo = w.root().foo;
+
+    // 	delete w.root().foo;
+    // 	delete w.root().bar;
+
+    // 	await testutil.forceGc();
+    // 	expect(w.objectCount()).toBe(0);
+    // });
 });

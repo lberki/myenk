@@ -1,15 +1,14 @@
 "use strict";
 
-let worker_threads = require("worker_threads");
+let testutil = require("./testutil.js");
 
-const signal = new Int32Array(worker_threads.workerData.signal);
+function singleDictionaryStressTest(w, t, param) {
+    let obj = w.root().obj;
+    let latch = w.root()["latch_" + param];
 
-function finish() {
-    Atomics.notify(signal, 0);
+    w.root().start.wait();
+
+    latch.dec();
 }
 
-function smokeTest() {
-    finish();
-}
-
-smokeTest();
+exports.singleDictionaryStressTest = singleDictionaryStressTest;

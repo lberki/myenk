@@ -48,7 +48,10 @@ class WorkerProxy {
 }
 
 function spawnWorker(w, js, fn, param, latches) {
-    w.root().__testLatches = w.createDictionary();
+    if (!("__testLatches" in w.root())) {
+	w.root().__testLatches = w.createDictionary();
+    }
+
     for (let l of latches) {
 	w.root().__testLatches[l] = w.createLatch(1);
     }

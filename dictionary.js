@@ -82,7 +82,7 @@ function handlerDeleteProperty(target, property) {
 }
 
 function handlerHas(target, property) {
-    throw new Error("not implemented");
+    return target._has(property);
 }
 
 function handlerOwnKeys(target) {
@@ -300,6 +300,12 @@ class Dictionary extends localobject.LocalObject {
 	prevPtr.set32(0, nextPtr.get32(0));
 	this._freeCell(nextPtr);
 	return true;
+    }
+
+    _has(property) {
+	let propBytes = ENCODER.encode(property);
+	let [_, cellPtr] = this._findProperty(propBytes);
+	return cellPtr !== null;
     }
 
     static _create(world, arena, ptr) {
