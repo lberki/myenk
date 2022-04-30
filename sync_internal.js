@@ -44,11 +44,19 @@ class CriticalSection {
     }
 
     run(l) {
-	acquireLock(_int32, _addr);
+	acquireLock(this._int32, this._addr);
 	try {
-	    l();
+	    return l();
 	} finally {
-	    releaseLock(_int32, _addr);
+	    releaseLock(this._int32, this._addr);
+	}
+    }
+
+    wrap(obj, f) {
+	return (...args) => {
+	    return this.run(() => {
+		return f.call(obj, ...args);
+	    });
 	}
     }
 }

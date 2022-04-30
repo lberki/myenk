@@ -8,7 +8,9 @@
 const util = require("util");
 const debuglog = util.debuglog("arena");
 
-const ARENA_HEADER_SIZE = 16;
+let sync_internal = require("./sync_internal.js");
+
+const ARENA_HEADER_SIZE = 32;
 const BLOCK_HEADER_SIZE = 4;
 const MAGIC = 0xd1ce4011;
 
@@ -52,7 +54,6 @@ class Ptr {
 	this._boundsCheck(i*4);
 	this._arena.uint32[(this._base + BLOCK_HEADER_SIZE) / 4 + i] = x;
     }
-
 }
 
 class Arena {
@@ -62,14 +63,19 @@ class Arena {
 	this.int32 = new Int32Array(this.bytes);
 	this.uint8 = new Uint8Array(this.bytes);
 
+	this._criticalSection = new sync_internal.CriticalSection(this.int32, 4);
 	debuglog("created arena(size=%d)", bytes.byteLength - ARENA_HEADER_SIZE);
+
+	this.alloc = this._criticalSection.wrap(this, this.allocLocked);
+	this.free = this._criticalSection.wrap(this, this.freeLocked);
     }
 
     _init(size) {
 	this.uint32[0] = MAGIC;  // Magic
-	this.uint32[1] = 0; // Start of freelist
+	this.uint32[1] = 0;  // Start of freelist
 	this.uint32[2] = this.bytes.byteLength - ARENA_HEADER_SIZE;  // free space left
 	this.uint32[3] = ARENA_HEADER_SIZE;  // high water mark
+	this.uint32[4] = 0;  // Lock
     }
 
     static create(size) {
@@ -128,7 +134,7 @@ class Arena {
 	return new Ptr(this, addr);
     }
 
-    alloc(size) {
+    allocLocked(size) {
 	let allocSize = (size + 3) & ~3;  // Round up to the nearest multiple of 4
 	let fromFreeList = this._fromFreeList(allocSize);
 	if (fromFreeList !== null) {
@@ -154,7 +160,7 @@ class Arena {
 	return new Ptr(this, base);
     }
 
-    free(ptr) {
+    freeLocked(ptr) {
 	let size = this.uint32[ptr._base / 4];
 	let allocSize = (size + 3) & ~3;
 	debuglog("freeing %d bytes @ %d", size, ptr._base);

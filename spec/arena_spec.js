@@ -1,6 +1,8 @@
 "use strict";
 
-var arena = require("../arena.js");
+let arena = require("../arena.js");
+let world = require("../world.js");
+let testutil = require("./testutil.js");
 
 describe("arena", () => {
     it("exists", () => {
@@ -86,5 +88,33 @@ describe("arena", () => {
 
 	expect(() => { ptr.get32(-1) }).toThrow();
 	expect(() => { ptr.get32(2) }).toThrow();
+    });
+
+    // It's kinda ugly that the tests of Arena depend on World, but it would be damn inconvenient to
+    // orchestrate the test without testutil, which needs world. It also provides a convenient way
+    // to create a shared Arena.
+    it("parallel allocation stress test", () => {
+	const NUM_WORKERS = 4;
+
+	let w = world.World.create(1024);
+	w.root().start = w.createLatch(1);
+
+	let workers = new Array();
+	for (let i = 0; i < NUM_WORKERS; i++) {
+	    w.root()["latch_" + i] = w.createLatch(1);
+	    workers.push(testutil.spawnWorker(
+		w, "arena_spec_worker.js", "parallelAllocStressTest",
+		i, []));
+	}
+
+	let before = w._arena.left();
+
+	w.root().start.dec();
+
+	for (let i = 0; i < NUM_WORKERS; i++) {
+	    w.root()["latch_" + i].wait();
+	}
+
+	expect(w._arena.left()).toBe(before);
     });
 });
