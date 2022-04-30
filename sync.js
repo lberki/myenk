@@ -2,6 +2,7 @@
 
 let arena = require("./arena.js");
 let localobject = require("./localobject.js");
+let sync_internal = require("./sync_internal.js");
 
 const UINT32_MAX = 4294967295;
 
@@ -34,10 +35,6 @@ class Lock extends localobject.LocalObject {
 	this._addr = (_ptr._base + arena.BLOCK_HEADER_SIZE) / 4;
     }
 
-    static FREE = 0;
-    static LOCKED_NO_WAITERS = 1;
-    static LOCKED_AND_WAITERS = 2;
-
     static _registerForWorld(privateSymbol, bufferType) {
 	PRIVATE = privateSymbol;
 	LOCK_BUFFER_TYPE = bufferType;
@@ -55,34 +52,12 @@ class Lock extends localobject.LocalObject {
     }
 
     _lock() {
-	let old = Atomics.compareExchange(this._int32, this._addr, Lock.FREE, Lock.LOCKED_NO_WAITERS);
-	if (old === Lock.FREE) {
-	    return;  // Fast path. No contention.
-	}
-
-	while (true) {
-	    // Signal that we are waiting for the lock.
-	    old = Atomics.exchange(this._int32, this._addr, Lock.LOCKED_AND_WAITERS);
-
-	    if (old === Lock.FREE) {
-		// ...but if it was this thread that flipped the lock to non-free, it is ours.
-		return;
-	    }
-
-	    // Otherwise, the lock is now in "locked with maybe waiters" state and we are one of
-	    // those waiters. Wait until the lock is unlocked.
-	    let result = Atomics.wait(this._int32, this._addr, Lock.LOCKED_AND_WAITERS);
-	}
+	sync_internal.acquireLock(this._int32, this._addr);
     }
 
 
     _unlock() {
-	let old = Atomics.exchange(this._int32, this._addr, Lock.FREE);
-	if (old === Lock.LOCKED_AND_WAITERS) {
-	    // If there may be waiters, signal one of them. If there weren't, the only harm done is
-	    // an extra system call.
-	    Atomics.notify(this._int32, this._addr, 1);
-	}
+	sync_internal.releaseLock(this._int32, this._addr);
     }
 }
 
@@ -152,7 +127,7 @@ class Latch extends localobject.LocalObject {
 		return;
 	    }
 
-	    let result = Atomics.wait(this._int32, this._addr, old);
+	    let result = Atomics.wait(this._int32, this._addr, old, 2000);
 	    if (result === "ok") {
 		// Nothing happened between the load() and the wait() and the latch eventually
 		// reached zero
