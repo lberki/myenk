@@ -3,7 +3,6 @@
 // TODO:
 // - Figure out why allocating/deallocating 32 and 64 bytes in Arena results in OOM
 // - Figure out why the latch test case is slow (150ms per iteration!)
-// - Add test case to make sure that three-long chain of objects is freed when not referenced
 // - Implement symbols as keys
 // - Implement GC (and a linked list of every known object)
 //   - Test the complicated WeakRef() system

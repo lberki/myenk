@@ -160,6 +160,31 @@ describe("dictionary", () => {
 	expect(obj2.other.other === obj2).toBe(true);
     });
 
+    it("can free a reference chain", async () => {
+	let w = world.World.create(1024);
+	let a = w.createDictionary();
+	let b = w.createDictionary();
+	let c = w.createDictionary();
+	let d = w.createDictionary();
+
+	w.root().a = a;
+	a.b = b;
+	b.c = c;
+	c.d = d;
+
+	a = null;
+	b = null;
+	c = null;
+	d = null;
+
+	await testutil.forceGc();
+	expect(w.objectCount()).toBe(4);
+
+	delete w.root().a;
+	await testutil.forceGc();
+	expect(w.objectCount()).toBe(0);
+    });
+
     it("can handle references to non-dictionaries", async () => {
 	let w = world.World.create(1024);
 	let obj = w.createDictionary();
