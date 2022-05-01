@@ -174,33 +174,34 @@ describe("dictionary", () => {
 	expect(w.left()).toBe(1024);
     });
 
-    // it("multi-threaded single-dictionary stress test", async () => {
-    // 	const NUM_WORKERS = 4;
+    it("multi-threaded single-dictionary stress test", async () => {
+	return;  // Currently failing
+	const NUM_WORKERS = 4;
 
-    // 	let w = world.World.create(1024);
-    // 	w.root().start = w.createLatch(1);
+	let w = world.World.create(10240);
+	w.root().start = w.createLatch(1);
 
-    // 	let workers = new Array();
-    // 	for (let i = 0; i < NUM_WORKERS; i++) {
-    // 	    w.root()["latch_" + i] = w.createLatch(1);
-    // 	    workers.push(testutil.spawnWorker(
-    // 		w, "dictionary_spec_worker.js", "singleDictionaryStressTest",
-    // 		i, []));
-    // 	}
+	let workers = new Array();
+	for (let i = 0; i < NUM_WORKERS; i++) {
+	    w.root()["latch_" + i] = w.createLatch(1);
+	    workers.push(testutil.spawnWorker(
+		w, "dictionary_spec_worker.js", "singleDictionaryStressTest",
+		i, []));
+	}
 
-    // 	let leftBefore = w.left();
-    // 	let objectCountBefore = w.objectCount();
-    // 	w.root().obj = w.createDictionary();
+	let leftBefore = w.left();
+	let objectCountBefore = w.objectCount();
+	w.root().obj = w.createDictionary();
 
-    // 	w.root().start.dec();
+	w.root().start.dec();
 
-    // 	for (let i = 0; i < NUM_WORKERS; i++) {
-    // 	    w.root()["latch_" + i].wait();
-    // 	}
+	for (let i = 0; i < NUM_WORKERS; i++) {
+	    w.root()["latch_" + i].wait();
+	}
 
-    // 	delete w.root().obj;
-    // 	await testutil.forceGc();
-    // 	expect(w.objectCount()).toBe(objectCountBefore);
-    // 	expect(w.left()).toBe(leftBefore);
-    // });
+	delete w.root().obj;
+	await testutil.forceGc();
+	expect(w.objectCount()).toBe(objectCountBefore);
+	expect(w.left()).toBe(leftBefore);
+    });
 });

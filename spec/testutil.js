@@ -6,6 +6,29 @@ const worker_threads = require("worker_threads");
 
 let world = require("../world.js");
 
+// Marsaglia xorshift32 algorithm
+class PRNG {
+    constructor(seed) {
+	this._state = seed;
+    }
+
+    next() {
+	let x = this._state;
+	x ^= x << 13;
+	x ^= x >> 17;
+	x ^= x << 5;
+	this._state = x;
+
+	// Only 31 bits of randomness, but no annoying negative numbers
+	return x & 0x7fffffff;
+    }
+
+    upto(n) {
+	// This is, of course, hilariously biased. For our purposes, it will do.
+	return this.next() % n;
+    }
+}
+
 function sleep(ms) {
     return new Promise(resolve => {
 	setTimeout(() => { resolve(null); }, ms);
@@ -72,3 +95,4 @@ function spawnWorker(w, js, fn, param, latches) {
 exports.sleep = sleep;
 exports.forceGc = forceGc;
 exports.spawnWorker = spawnWorker;
+exports.PRNG = PRNG;
