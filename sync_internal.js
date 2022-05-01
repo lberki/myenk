@@ -24,7 +24,9 @@ function acquireLock(_int32, _addr) {
 	// Otherwise, the lock is now in "locked with maybe waiters" state and we are one of
 	// those waiters. Wait until the lock is unlocked.
 	let result = Atomics.wait(_int32, _addr, LockState.LOCKED_AND_WAITERS, 1000);
-	if (result === "timed-out") { throw new Error("wtf"); }
+	if (result === "timed-out") {
+	    throw new Error("timeout");
+	}
     }
 }
 

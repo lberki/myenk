@@ -119,6 +119,12 @@ class World {
 	return this._createObject(sync.Lock, ...args);
     }
 
+    // Run a mutation of the object graph.
+    // This needs to be done like this because we don't want to try to lock an object to change its
+    // refcount while we are mutating another one, so we record refcount changes during the mutation
+    // and apply the after it is done. A refcount decrement can result in freeing objects which can
+    // itself result in decrementing a refcount and so on, so it needs to be done a in a loop until
+    // a steady state is reached.
     _withMutation(l) {
 	if (this._mutation !== null) {
 	    throw new Error("impossible");
@@ -128,18 +134,30 @@ class World {
 	try {
 	    return l();
 	} finally {
-	    for (let m of this._mutation) {
-		this._commitRefcount(m.objPtr, m.delta, m.priv);
+	    while (this._mutation.length > 0) {
+		this._toFree = [];
+
+		// First commit refcount changes
+		for (let m of this._mutation) {
+		    this._commitRefcount(m.objPtr, m.delta, m.priv);
+		}
+
+		// ...then free objects that need to be freed and record the mutations caused by
+		// that in turn
+		this._mutation = [];
+		for (let priv of this._toFree) {
+		    // Decrease object count
+		    this._header.set32(2, this._header.get32(2) - 1);
+
+		    // Free object. May cause new refcount changes.
+		    priv._free();
+		}
+
+		// ...and continue recording the mutations caused by freeing objects, if needed.
 	    }
 
+	    this._toFree = null;
 	    this._mutation = null;
-	}
-    }
-
-    _addToMutation(m) {
-	//this._mutation.push(m);
-	if (this._mutation === null) {
-	    throw new Error("impossible");
 	}
     }
 
@@ -236,8 +254,6 @@ class World {
     }
 
     _commitRefcount(objPtr, delta, priv) {
-	this._addToMutation({});
-
 	// TODO: acquire object lock
 	// (and then make sure that the lock for another object is not held to avoid deadlocks)
 	let oldRefcount = objPtr.get32(3);
@@ -258,8 +274,7 @@ class World {
 	    priv = pub[PRIVATE];
 	}
 
-	this._header.set32(2, this._header.get32(2) - 1);
-	priv._free();
+	this._toFree.push(priv);
     }
 }
 
