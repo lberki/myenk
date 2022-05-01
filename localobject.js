@@ -26,8 +26,8 @@ class LocalObject {
     }
 
     _init() {
-	this._ptr.set32(2, 0);
-	this._ptr.set32(3, 1);  // Only this thread knows about this object for now
+	this._ptr.set32(2, 0);  // Lock
+	// refcount is at address 3. The World is responsible for setting it.
     }
 
     _free() {

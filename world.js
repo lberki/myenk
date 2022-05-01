@@ -25,6 +25,9 @@ const HEADER_SIZE = 16;
 const OBJECT_SIZE = 16;
 const MAGIC = 0x1083041d;
 
+const THREAD_RC_DELTA = 1000;    // Change in refcount for references from threads
+const WORLD_RC_DELTA = 1;        // Change in refcount for references from within the world
+
 const ObjectTypes = [
     null,  // marker so that zero is not a valid object type in RAM,
     dictionary.Dictionary,
@@ -40,7 +43,7 @@ for (let i = 1; i < ObjectTypes.length; i++) {
 // 0: magic (0x1083041d)
 // 1: address of root object
 // 2: object count (not including root object)
-// 3: reserved
+// 3: Lock
 
 class World {
     constructor(a, header) {
@@ -118,17 +121,35 @@ class World {
 	debuglog("allocated " + resultClass.name + " @ " + ptr._base);
 
 	let [priv, pub] = resultClass._create(this, this._arena, ptr);
+	this._registerObject(priv, pub, ptr._base);
+
+	// Initialize the object. This can allocate memory but should not create new objects because
+	// that makes GC difficult:
+	// - Either we link in the object to the global object chain before we call _init(). Then a
+	//   GC from another thread will have to deal with an object whose memory is not initialized
+	// - Or initialize the object before linking it to the global object chain. Then all objects
+	//   created by _init() will be unreferenced (since they don't necessarily have a reference
+	//   to them by the creating thread) and thus eligible for GC.
+	// - We do something more clever (e.g. temporarily bump the refcount for these objects or
+	//   lock the world with a reentrant lock). That's complicated and not necessary for now.
 	priv._init(...args);
 
-	this._registerObject(priv, pub, ptr._base);
+	// Only this thread knows about this object for now. This is enough to keep the newly
+	// created object from being garbage collected. No one has a reference to the object yet so
+	// no lock is needed.
+	priv._ptr.set32(3, THREAD_RC_DELTA);
+
+	// Register the object on the chain and thus make it eligible for GC. The world lock will be
+	// needed for this.
 	this._header.set32(2, this._header.get32(2) + 1);
+
 	return pub;
     }
 
     _dispose(priv) {
 	// TODO: protect this with a lock once we have one
 	this._addrToObject.delete(priv._ptr._base);
-	this._changeRefcount(priv._ptr, -1, priv);
+	this._changeRefcount(priv._ptr, -THREAD_RC_DELTA, priv);
     }
 
     _deregisterObject(addr) {
@@ -159,10 +180,19 @@ class World {
 
 	let [priv, pub] = ObjectTypes[type]._create(this, this._arena, ptr);
 	if (!forGc) {
-	    this._changeRefcount(ptr, 1);
+	    this._changeRefcount(ptr, THREAD_RC_DELTA);
 	    this._registerObject(priv, pub, addr);
 	}
 	return pub;
+    }
+
+    _addWorldRef(objPtr) {
+	// Refcount increases can't result in GC, so no optional priv= argument
+	this._changeRefcount(objPtr, WORLD_RC_DELTA);
+    }
+
+    _delWorldRef(objPtr, priv=null) {
+	this._changeRefcount(objPtr, -WORLD_RC_DELTA, priv);
     }
 
     // If the caller knows the private part of the object, it can pass it here so that it does
@@ -182,8 +212,8 @@ class World {
 	}
 
 	if (priv === null) {
-	    // We need to have a local object so that we can properly deallocate its data
-	    // structures in the arena
+	    // We need to have a local object so that we can properly deallocate the data
+	    // structures in the arena allocated by the world object
 	    let pub = this._localFromAddr(objPtr._base, true);
 	    priv = pub[PRIVATE];
 	}

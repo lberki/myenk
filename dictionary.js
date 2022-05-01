@@ -135,7 +135,7 @@ class Dictionary extends localobject.LocalObject {
 	let valueBytes = cellPtr.get32(3);
 
 	if (type === ValueType.OBJECT) {
-	    this._world._changeRefcount(this._arena.fromAddr(valueBytes), -1);
+	    this._world._delWorldRef(this._arena.fromAddr(valueBytes));
 	} else if (type === ValueType.STRING) {
 	    if (valueBytes !== 0) {
 		this._arena.free(this._arena.fromAddr(valueBytes));
@@ -244,7 +244,7 @@ class Dictionary extends localobject.LocalObject {
 
 	    bufferType = ValueType.OBJECT;
 	    bufferValue = value[PRIVATE]._ptr._base;
-	    this._world._changeRefcount(value[PRIVATE]._ptr, 1, value[PRIVATE]);
+	    this._world._addWorldRef(value[PRIVATE]._ptr);
 	} else if (typeof(value) === "number" && value >= 0 && value < 100*1000*1000) {
 	    // TODO: support every 32-bit number
 	    bufferType = ValueType.INTEGER;
