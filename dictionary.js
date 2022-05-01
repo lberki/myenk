@@ -195,12 +195,18 @@ class Dictionary extends localobject.LocalObject {
 	return [null, null];
     }
 
-    _get(property, value) {
+    _get(property) {
 	if (property === PRIVATE) {
 	    // This is for internal use (PRIVATE is hidden from everyone else)
 	    return this;
 	}
 
+	return this._world._withMutation(() => {
+	    return this._getInMutation(property);
+	});
+    }
+
+    _getInMutation(property) {
 	if (typeof(property) !== "string") {
 	    throw new Error("not implemented");
 	}
@@ -231,6 +237,12 @@ class Dictionary extends localobject.LocalObject {
     }
 
     _set(property, value) {
+	return this._world._withMutation(() => {
+	    return this._setInMutation(property, value);
+	});
+    }
+
+    _setInMutation(property, value) {
 	if (typeof(property) !== "string") {
 	    throw new Error("not implemented");
 	}
@@ -288,6 +300,12 @@ class Dictionary extends localobject.LocalObject {
     }
 
     _deleteProperty(property) {
+	return this._world._withMutation(() => {
+	    return this._deletePropertyInMutation(property);
+	});
+    }
+
+    _deletePropertyInMutation(property) {
 	let propBytes = ENCODER.encode(property);
 	let [prevPtr, nextPtr] = this._findProperty(propBytes);
 

@@ -51,6 +51,7 @@ class World {
 	this._header = header;
 	this._addrToObject = new Map();
 	this._registry = new FinalizationRegistry(priv => { this._dispose(priv); });
+	this._mutation = null;
     }
 
     static create(size) {
@@ -83,7 +84,9 @@ class World {
 	}
 
 	let result = new World(a, header);
-	result._root = result._localFromAddr(header.get32(1));
+	result._withMutation(() => {
+	    result._root = result._localFromAddr(header.get32(1));
+	});
 
 	return result;
     }
@@ -114,6 +117,30 @@ class World {
 
     createLock(...args) {
 	return this._createObject(sync.Lock, ...args);
+    }
+
+    _withMutation(l) {
+	if (this._mutation !== null) {
+	    throw new Error("impossible");
+	}
+
+	this._mutation = [];
+	try {
+	    return l();
+	} finally {
+	    for (let m of this._mutation) {
+		this._commitRefcount(m.objPtr, m.delta, m.priv);
+	    }
+
+	    this._mutation = null;
+	}
+    }
+
+    _addToMutation(m) {
+	//this._mutation.push(m);
+	if (this._mutation === null) {
+	    throw new Error("impossible");
+	}
     }
 
     _createObject(resultClass, ...args) {
@@ -149,7 +176,10 @@ class World {
     _dispose(priv) {
 	// TODO: protect this with a lock once we have one
 	this._addrToObject.delete(priv._ptr._base);
-	this._changeRefcount(priv._ptr, -THREAD_RC_DELTA, priv);
+
+	this._withMutation(() => {
+	    this._changeRefcount(priv._ptr, -THREAD_RC_DELTA, priv);
+	});
     }
 
     _deregisterObject(addr) {
@@ -198,6 +228,16 @@ class World {
     // If the caller knows the private part of the object, it can pass it here so that it does
     // not need to be re-created on this thread or looked up in the map
     _changeRefcount(objPtr, delta, priv=null) {
+	if (this._mutation === null) {
+	    throw new Error("impossible");
+	}
+
+	this._mutation.push({ objPtr: objPtr, delta: delta, priv: priv});
+    }
+
+    _commitRefcount(objPtr, delta, priv) {
+	this._addToMutation({});
+
 	// TODO: acquire object lock
 	// (and then make sure that the lock for another object is not held to avoid deadlocks)
 	let oldRefcount = objPtr.get32(3);
