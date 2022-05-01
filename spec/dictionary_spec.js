@@ -200,7 +200,6 @@ describe("dictionary", () => {
     });
 
     it("multi-threaded single-dictionary stress test", async () => {
-	return;  // Currently failing
 	const NUM_WORKERS = 4;
 
 	let w = world.World.create(10240);

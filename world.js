@@ -16,8 +16,11 @@ const util = require("util");
 const debuglog = util.debuglog("world");
 
 let arena = require("./arena.js");
+let localobject = require("./localobject.js");
 let dictionary = require("./dictionary.js");
 let sync = require("./sync.js");
+let sync_internal = require("./sync_internal.js");
+
 
 const PRIVATE = Symbol("World private data");
 
@@ -52,13 +55,16 @@ class World {
 	this._addrToObject = new Map();
 	this._registry = new FinalizationRegistry(priv => { this._dispose(priv); });
 	this._mutation = null;
+	this._criticalSection = new sync_internal.CriticalSection(
+	    this._arena.int32,
+	    (header._base + arena.BLOCK_HEADER_SIZE) / 4 + 3);
     }
 
     static create(size) {
 	// We allocate:
 	// - the size requested
 	// - space for the world header
-	// - space for the root objet
+	// - space for the root object
 	// - memory block headers for the above two
 	let a = arena.Arena.create(size + HEADER_SIZE + OBJECT_SIZE + 2 * arena.BLOCK_HEADER_SIZE);
 	let header = a.alloc(HEADER_SIZE);
@@ -69,9 +75,10 @@ class World {
 	let result = new World(a, header);
 	result._root = result.createDictionary();
 
-	header.set32(0, MAGIC);
-	header.set32(1, result._root[PRIVATE]._ptr._base);
-	header.set32(2, 0);
+	header.set32(0, MAGIC);  // Magic
+	header.set32(1, result._root[PRIVATE]._ptr._base);  // Root object
+	header.set32(2, 0);  // Object count
+	header.set32(3, 0);  // Lock
 
 	return result;
     }
@@ -134,6 +141,7 @@ class World {
 	try {
 	    return l();
 	} finally {
+	    let objectsFreed = 0;
 	    while (this._mutation.length > 0) {
 		this._toFree = [];
 
@@ -146,15 +154,23 @@ class World {
 		// that in turn
 		this._mutation = [];
 		for (let priv of this._toFree) {
-		    // Decrease object count
-		    this._header.set32(2, this._header.get32(2) - 1);
-
 		    // Free object. May cause new refcount changes.
+		    // TODO: Once we have a list of objects somehow, that will need to be protected
+		    // with a lock.
+		    // TODO: It is currently guaranteed that we are the only thread accessing this
+		    // object, but once GC is implemented, GC might catch it on another thread and
+		    // then that must be protected against.
 		    priv._free();
+		    objectsFreed += 1;
 		}
 
 		// ...and continue recording the mutations caused by freeing objects, if needed.
 	    }
+
+	    this._criticalSection.run(() => {
+		// Decrease object count
+		this._header.set32(2, this._header.get32(2) - objectsFreed);
+	    });
 
 	    this._toFree = null;
 	    this._mutation = null;
@@ -184,9 +200,10 @@ class World {
 	// no lock is needed.
 	priv._ptr.set32(3, THREAD_RC_DELTA);
 
-	// Register the object on the chain and thus make it eligible for GC. The world lock will be
-	// needed for this.
-	this._header.set32(2, this._header.get32(2) + 1);
+	// Register the object on the chain and thus make it eligible for GC.
+	this._criticalSection.run(() => {
+	    this._header.set32(2, this._header.get32(2) + 1);
+	});
 
 	return pub;
     }
@@ -254,27 +271,32 @@ class World {
     }
 
     _commitRefcount(objPtr, delta, priv) {
-	// TODO: acquire object lock
-	// (and then make sure that the lock for another object is not held to avoid deadlocks)
-	let oldRefcount = objPtr.get32(3);
-	if (oldRefcount === 0) {
-	    throw new Error("impossible");
-	}
+	// TODO: This object creation is probably totally unnecessary, we have the address so all we
+	// need to do is to acquire the lock
+	let cs = new sync_internal.CriticalSection(
+	    this._arena.int32, localobject.LocalObject._criticalSectionAddr(objPtr._base));
 
-	let newRefcount = oldRefcount + delta;
-	objPtr.set32(3, newRefcount);
-	if (newRefcount !== 0) {
-	    return;
-	}
+	cs.run(() => {
+	    let oldRefcount = objPtr.get32(3);
+	    if (oldRefcount === 0) {
+		throw new Error("impossible");
+	    }
 
-	if (priv === null) {
-	    // We need to have a local object so that we can properly deallocate the data
-	    // structures in the arena allocated by the world object
-	    let pub = this._localFromAddr(objPtr._base, true);
-	    priv = pub[PRIVATE];
-	}
+	    let newRefcount = oldRefcount + delta;
+	    objPtr.set32(3, newRefcount);
+	    if (newRefcount !== 0) {
+		return;
+	    }
 
-	this._toFree.push(priv);
+	    if (priv === null) {
+		// We need to have a local object so that we can properly deallocate the data
+		// structures in the arena allocated by the world object
+		let pub = this._localFromAddr(objPtr._base, true);
+		priv = pub[PRIVATE];
+	    }
+
+	    this._toFree.push(priv);
+	});
     }
 }
 

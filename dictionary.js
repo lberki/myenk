@@ -1,6 +1,7 @@
 "use strict";
 
 // TODO:
+// - Add a stress test that involves a lot of allocating / deallocating objects
 // - Figure out why allocating/deallocating 32 and 64 bytes in Arena results in OOM
 // - Figure out why the latch test case is slow (150ms per iteration!)
 // - Implement symbols as keys
@@ -9,7 +10,6 @@
 // - Implement multiple threads
 //   - Test buffer sharing on the same thread a bit more
 //   - Implement more synchronization tools
-//   - Wrap shared data structures (Arena + Object header) in a lock
 //   - Test proxy creation in .get()
 // - Implement more JS data types (mainly Array)
 
@@ -202,7 +202,9 @@ class Dictionary extends localobject.LocalObject {
 	}
 
 	return this._world._withMutation(() => {
-	    return this._getInMutation(property);
+	    return this._criticalSection.run(() => {
+		return this._getInMutation(property);
+	    });
 	});
     }
 
@@ -238,7 +240,9 @@ class Dictionary extends localobject.LocalObject {
 
     _set(property, value) {
 	return this._world._withMutation(() => {
-	    return this._setInMutation(property, value);
+	    return this._criticalSection.run(() => {
+		return this._setInMutation(property, value);
+	    });
 	});
     }
 
@@ -301,7 +305,9 @@ class Dictionary extends localobject.LocalObject {
 
     _deleteProperty(property) {
 	return this._world._withMutation(() => {
-	    return this._deletePropertyInMutation(property);
+	    return this._criticalSection.run(() => {
+		return this._deletePropertyInMutation(property);
+	    });
 	});
     }
 
