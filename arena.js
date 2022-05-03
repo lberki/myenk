@@ -132,9 +132,12 @@ class Arena {
 		// 2. Prev ptr (to the first half)
 		this.uint32[secondHalf / 4 + 1] = next << 1;
 
-		// 3. If this was the last block, update arena header
+		// 3. Update prev ptr in next block or arena last block ptr if last block is halved
 		if (next === this.uint32[6]) {
 		    this.uint32[6] = secondHalf;
+		} else {
+		    let afterNext = next + BLOCK_HEADER_SIZE + (this.uint32[next / 4] + 3) & ~3;
+		    this.uint32[afterNext / 4 + 1] = secondHalf << 1;
 		}
 
 		// Next ptr in the first half will be updated by caller (we can't do it here because

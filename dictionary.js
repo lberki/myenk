@@ -6,6 +6,8 @@
 // - Check whether allocating/deallocating 32 and 64 bytes in Arena does not OOM anymore
 // - Add a stress test that involves a lot of allocating / deallocating objects
 
+// - Add timeout to lock/latch and make it somehow configurable for tests
+
 // - Figure out why the latch test case is slow (150ms per iteration!)
 // - Implement symbols as keys
 // - Implement GC (and a linked list of every known object)
