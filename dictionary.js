@@ -1,16 +1,15 @@
 "use strict";
 
 // TODO:
+// - Maintain "free" bit in arena block headers
+// - Coalesce consecutive free blocks
+// - Check whether allocating/deallocating 32 and 64 bytes in Arena does not OOM anymore
 // - Add a stress test that involves a lot of allocating / deallocating objects
-// - Figure out why allocating/deallocating 32 and 64 bytes in Arena results in OOM
+
 // - Figure out why the latch test case is slow (150ms per iteration!)
 // - Implement symbols as keys
 // - Implement GC (and a linked list of every known object)
 //   - Test the complicated WeakRef() system
-// - Implement multiple threads
-//   - Test buffer sharing on the same thread a bit more
-//   - Implement more synchronization tools
-//   - Test proxy creation in .get()
 // - Implement more JS data types (mainly Array)
 
 // KNOWLEDGE BASE:

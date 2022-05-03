@@ -14,6 +14,10 @@ const ARENA_HEADER_SIZE = 32;
 const BLOCK_HEADER_SIZE = 8;
 const MAGIC = 0xd1ce4011;
 
+// Block header:
+// 4 bytes: size of block (not including header)
+// 4 bytes: (address of header of previous block << 1) | (1 if free, otherwise 0)
+
 class Ptr {
     constructor(arena, base) {
 	this._arena = arena;
@@ -76,6 +80,8 @@ class Arena {
 	this.uint32[2] = this.bytes.byteLength - ARENA_HEADER_SIZE;  // free space left
 	this.uint32[3] = ARENA_HEADER_SIZE;  // high water mark
 	this.uint32[4] = 0;  // Lock
+	this.uint32[5] = 0;  // Block with lowest address, 0 if none
+	this.uint32[6] = 0;  // Block with highest address, 0 if none
     }
 
     static create(size) {
@@ -118,8 +124,21 @@ class Arena {
 	    } else if (nextSize >= size + BLOCK_HEADER_SIZE + 4) {  // 4: minimum alloc size
 		// Larger block, cut it in half
 		let secondHalf = next + size + BLOCK_HEADER_SIZE;
-		// Set size of the second, still unallocated half
+
+		// Set header of second, still unallocated half:
+		// 1. Size (what is left after cutting the amount to be allocated)
 		this.uint32[secondHalf / 4] = nextSize - size - BLOCK_HEADER_SIZE;
+
+		// 2. Prev ptr (to the first half)
+		this.uint32[secondHalf / 4 + 1] = next << 1;
+
+		// 3. If this was the last block, update arena header
+		if (next === this.uint32[6]) {
+		    this.uint32[6] = secondHalf;
+		}
+
+		// Next ptr in the first half will be updated by caller (we can't do it here because
+		// the allocation size may be rounded up)
 
 		// Replace next in freelist with secondHalf
 		this.uint32[(secondHalf + BLOCK_HEADER_SIZE) / 4] =
@@ -155,8 +174,23 @@ class Arena {
 	// Bump high water mark
 	this.uint32[3] += allocSize + BLOCK_HEADER_SIZE;
 
+	// Set lowest block address, if necessary
+	if (this.uint32[5] === 0) {
+	    this.uint32[5] = base;
+	}
+
+	// Set next block address in previous highest block, update highest block
+	// TODO: This needs to be updated if the last block is split
+	let prevHighest = this.uint32[6];
+
 	// Set size in block header
 	this.uint32[base / 4] = size;
+
+	// Set prev pointer in block header
+	this.uint32[base / 4 + 1] = prevHighest << 1;
+
+	// Set last block in arena header
+	this.uint32[6] = base;
 
 	debuglog("allocated %d bytes @ %d by expansion", size, base);
 	this.uint32[2] = this.uint32[2] - allocSize - BLOCK_HEADER_SIZE;
@@ -175,6 +209,35 @@ class Arena {
 
     left() {
 	return this.uint32[2];
+    }
+
+    sanityCheck() {
+	let sizes = [];
+	let nextBlock = this.uint32[5];
+	let lastBlock = 0;
+
+	while (nextBlock < this.uint32[3]) {
+	    let nextSize = this.uint32[nextBlock / 4];
+	    let prevInBlock = this.uint32[nextBlock / 4 + 1] >> 1;
+	    if (prevInBlock !== lastBlock) {
+		throw new Error(
+		    "block @ " + nextBlock + " has prev ptr " + prevInBlock + " not " + lastBlock);
+	    }
+
+	    sizes.push(nextSize);
+	    lastBlock = nextBlock;
+	    nextBlock += ((nextSize+3) & ~3) + BLOCK_HEADER_SIZE;
+	}
+
+	if (lastBlock !== this.uint32[6]) {
+	    throw new Error("last block is " + lastBlock + " from header: " + this.uint32[6]);
+	}
+
+	if (this.uint32[3] !== nextBlock) {
+	    throw new Error("high water mark is " + this.uint32[3] + " not " + nextBlock);
+	}
+
+	return sizes;
     }
 }
 
