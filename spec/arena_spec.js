@@ -14,7 +14,7 @@ describe("arena", () => {
 	let ptr = cut.alloc(24);
 	ptr.set32(0, 1);
 	expect(ptr.get32(0)).toBe(1);
-	expect(cut.left()).toBe(4);
+	expect(cut.left()).toBe(32 - 24 - arena.BLOCK_HEADER_SIZE);
     });
 
     it("returns size", () => {
@@ -27,7 +27,7 @@ describe("arena", () => {
 	let cut = arena.Arena.create(32);
 	let ptr = cut.alloc(1);
 	expect(ptr.size()).toBe(1);
-	expect(cut.left()).toBe(24);  // alloc: 4 (rounded up) + 4 (header)
+	expect(cut.left()).toBe(32 - 4 - arena.BLOCK_HEADER_SIZE);
 	expect(() => { ptr.get8(1); }).toThrow();
 	cut.free(ptr);
 	expect(cut.left()).toBe(32);
@@ -46,21 +46,21 @@ describe("arena", () => {
 	expect(cut.left()).toBe(32);
 	ptr = cut.alloc(24);
 	expect(ptr.get32(2)).toBe(1);
-	expect(cut.left()).toBe(4);
+	expect(cut.left()).toBe(32 - 24 - arena.BLOCK_HEADER_SIZE);
     });
 
     it("can halve freed block", () => {
-	let cut = arena.Arena.create(32);
-	let ptr = cut.alloc(28);
+	let cut = arena.Arena.create(140);
+	let ptr = cut.alloc(128);
 	cut.free(ptr);
-	let ptr1 = cut.alloc(12);
-	expect(cut.left()).toBe(16);
-	let ptr2 = cut.alloc(12);
-	expect(cut.left()).toBe(0);
+	let ptr1 = cut.alloc(48);
+	expect(cut.left()).toBe(140 - 48 - arena.BLOCK_HEADER_SIZE);
+	let ptr2 = cut.alloc(48);
+	expect(cut.left()).toBe(140 - 48 - 48 - 2*arena.BLOCK_HEADER_SIZE);
     });
 
     it("can skip block too small", () => {
-	let cut = arena.Arena.create(48);
+	let cut = arena.Arena.create(64);
 	let small = cut.alloc(8);
 	let large = cut.alloc(16);
 	small.set32(1, 3);

@@ -11,7 +11,7 @@ const debuglog = util.debuglog("arena");
 let sync_internal = require("./sync_internal.js");
 
 const ARENA_HEADER_SIZE = 32;
-const BLOCK_HEADER_SIZE = 4;
+const BLOCK_HEADER_SIZE = 8;
 const MAGIC = 0xd1ce4011;
 
 class Ptr {
@@ -110,22 +110,25 @@ class Arena {
 	    }
 
 	    let nextSize = this.uint32[next / 4];
+
 	    if (nextSize === size) {
 		// Perfect match, remove from freelist and return
-		this.uint32[prev / 4] = this.uint32[(next + 4) / 4];
+		this.uint32[prev / 4] = this.uint32[(next + BLOCK_HEADER_SIZE) / 4];
 		return next;
-	    } else if (nextSize >= size + BLOCK_HEADER_SIZE + 4) {
+	    } else if (nextSize >= size + BLOCK_HEADER_SIZE + 4) {  // 4: minimum alloc size
 		// Larger block, cut it in half
 		let secondHalf = next + size + BLOCK_HEADER_SIZE;
+		// Set size of the second, still unallocated half
 		this.uint32[secondHalf / 4] = nextSize - size - BLOCK_HEADER_SIZE;
 
 		// Replace next in freelist with secondHalf
-		this.uint32[(secondHalf + 4) / 4] = this.uint32[(next + 4) / 4];
+		this.uint32[(secondHalf + BLOCK_HEADER_SIZE) / 4] =
+		    this.uint32[(next + BLOCK_HEADER_SIZE) / 4];
 		this.uint32[prev / 4] = secondHalf;
 
 		return next;
 	    } else {
-		prev = next + 4;  // Freelist is the first uint32 in the block
+		prev = next + BLOCK_HEADER_SIZE;  // Freelist is the first uint32 in the block
 	    }
 	}
     }
