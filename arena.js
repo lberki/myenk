@@ -12,6 +12,7 @@ let sync_internal = require("./sync_internal.js");
 
 const ARENA_HEADER_SIZE = 32;
 const BLOCK_HEADER_SIZE = 8;
+const MIN_ALLOC_SIZE = 4;
 const MAGIC = 0xd1ce4011;
 
 // Block header:
@@ -58,6 +59,10 @@ class Ptr {
 	this._boundsCheck(i*4);
 	this._arena.uint32[(this._base + BLOCK_HEADER_SIZE) / 4 + i] = x;
     }
+}
+
+function roundUp(size) {
+    return (size + MIN_ALLOC_SIZE - 1) & ~(MIN_ALLOC_SIZE-1);
 }
 
 class Arena {
@@ -141,7 +146,7 @@ class Arena {
 		if (next === this.uint32[6]) {
 		    this.uint32[6] = secondHalf;
 		} else {
-		    let afterNext = next + BLOCK_HEADER_SIZE + (this.uint32[next / 4] + 3) & ~3;
+		    let afterNext = next + BLOCK_HEADER_SIZE + roundUp(this.uint32[next / 4]);
 		    let afterNextFree = this.uint32[afterNext / 4 + 1] & 1;
 
 		    // Keep free bit
@@ -197,7 +202,7 @@ class Arena {
     }
 
     allocLocked(size) {
-	let allocSize = (size + 3) & ~3;  // Round up to the nearest multiple of 4
+	let allocSize = roundUp(size);
 	let newBlock  = this._fromFreeList(allocSize);
 	if (newBlock !== null) {
 	    debuglog("allocated %d bytes @ %d from freelist", size, newBlock);
@@ -217,7 +222,7 @@ class Arena {
 
     freeLocked(ptr) {
 	let size = this.uint32[ptr._base / 4];
-	let allocSize = (size + 3) & ~3;
+	let allocSize = roundUp(size);
 	debuglog("freeing %d bytes @ %d", size, ptr._base);
 
 	// Increase free byte count in header
@@ -251,7 +256,7 @@ class Arena {
 
 	    sizes.push(nextSize);
 	    lastBlock = nextBlock;
-	    nextBlock += ((nextSize+3) & ~3) + BLOCK_HEADER_SIZE;
+	    nextBlock += roundUp(nextSize) + BLOCK_HEADER_SIZE;
 	}
 
 	if (lastBlock !== this.uint32[6]) {
