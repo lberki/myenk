@@ -111,10 +111,12 @@ class Arena {
     }
 
     _fromFreeList(size) {
-	let prev = 4;  // Address of start of freelist
+	let prevBlock = 0;  // Previous block on freelist (0: header)
 
 	while (true) {
-	    let next = this.uint32[prev / 4];
+	    // Address of next pointer in the previous block or the header
+	    let prevAddr = prevBlock == 0 ? 4 : prevBlock + BLOCK_HEADER_SIZE;
+	    let next = this.uint32[prevAddr / 4];
 	    if (next === 0) {
 		return null;  // end of freelist, nothing found
 	    }
@@ -126,16 +128,12 @@ class Arena {
 		let afterNext = this.uint32[(next + BLOCK_HEADER_SIZE) / 4];
 
 		// Forward link
-		this.uint32[prev / 4] = afterNext;
+		this.uint32[prevAddr / 4] = afterNext;
 
 		if (afterNext !== 0) {
 		    // Backward link
-		    // TODO: the magic with prev is a little ugly. Change prev to be either zero or
-		    // the beginning of the previous block.
-		    this.uint32[(afterNext + BLOCK_HEADER_SIZE) / 4 + 1] =
-			prev == 4 ? 0 : prev - BLOCK_HEADER_SIZE;
+		    this.uint32[(afterNext + BLOCK_HEADER_SIZE) / 4 + 1] = prevBlock;
 		}
-
 
 		// Flip free bit to zero
 		this.uint32[next / 4 + 1] &= ~1;
@@ -176,12 +174,11 @@ class Arena {
 		// Forward pointer in secondHalf
 		this.uint32[(secondHalf + BLOCK_HEADER_SIZE) / 4] = afterNext;
 
-		// Backward pointer in secondHalf. Again, the calculation from prev is ugly.
-		this.uint32[(secondHalf + BLOCK_HEADER_SIZE) / 4 + 1] =
-		    prev == 4 ? 0 : prev - BLOCK_HEADER_SIZE;
+		// Backward pointer in secondHalf.
+		this.uint32[(secondHalf + BLOCK_HEADER_SIZE) / 4 + 1] = prevBlock;
 
 		// Forward pointer in previous block on freelist
-		this.uint32[prev / 4] = secondHalf;
+		this.uint32[prevAddr / 4] = secondHalf;
 
 		if (afterNext !== 0) {
 		    // Backward pointer in next block on freelist
@@ -190,7 +187,7 @@ class Arena {
 
 		return next;
 	    } else {
-		prev = next + BLOCK_HEADER_SIZE;  // Freelist is the first uint32 in the block
+		prevBlock = next;
 	    }
 	}
     }
