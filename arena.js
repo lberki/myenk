@@ -123,7 +123,19 @@ class Arena {
 
 	    if (nextSize === size) {
 		// Perfect match, remove from freelist
-		this.uint32[prev / 4] = this.uint32[(next + BLOCK_HEADER_SIZE) / 4];
+		let afterNext = this.uint32[(next + BLOCK_HEADER_SIZE) / 4];
+
+		// Forward link
+		this.uint32[prev / 4] = afterNext;
+
+		if (afterNext !== 0) {
+		    // Backward link
+		    // TODO: the magic with prev is a little ugly. Change prev to be either zero or
+		    // the beginning of the previous block.
+		    this.uint32[(afterNext + BLOCK_HEADER_SIZE) / 4 + 1] =
+			prev == 4 ? 0 : prev - BLOCK_HEADER_SIZE;
+		}
+
 
 		// Flip free bit to zero
 		this.uint32[next / 4 + 1] &= ~1;
@@ -134,7 +146,7 @@ class Arena {
 		// Larger block, cut it in half
 		let secondHalf = next + size + BLOCK_HEADER_SIZE;
 
-		// Set header of second, still unallocated half:
+		// Set header of second, still unallocated half
 		// 1. Size (what is left after cutting the amount to be allocated)
 		this.uint32[secondHalf / 4] = nextSize - size - BLOCK_HEADER_SIZE;
 
@@ -158,10 +170,23 @@ class Arena {
 		// Next ptr in the first half will be updated by caller (we can't do it here because
 		// the allocation size may be rounded up)
 
-		// Replace next in freelist with secondHalf.
-		this.uint32[(secondHalf + BLOCK_HEADER_SIZE) / 4] =
-		    this.uint32[(next + BLOCK_HEADER_SIZE) / 4];
+		// Replace block in freelist with secondHalf
+		let afterNext = this.uint32[(next + BLOCK_HEADER_SIZE) / 4];
+
+		// Forward pointer in secondHalf
+		this.uint32[(secondHalf + BLOCK_HEADER_SIZE) / 4] = afterNext;
+
+		// Backward pointer in secondHalf. Again, the calculation from prev is ugly.
+		this.uint32[(secondHalf + BLOCK_HEADER_SIZE) / 4 + 1] =
+		    prev == 4 ? 0 : prev - BLOCK_HEADER_SIZE;
+
+		// Forward pointer in previous block on freelist
 		this.uint32[prev / 4] = secondHalf;
+
+		if (afterNext !== 0) {
+		    // Backward pointer in next block on freelist
+		    this.uint32[(afterNext + BLOCK_HEADER_SIZE) / 4 + 1] = secondHalf;
+		}
 
 		return next;
 	    } else {
@@ -227,13 +252,27 @@ class Arena {
 	// Increase free byte count in header
 	this.uint32[2] = this.uint32[2] + allocSize + BLOCK_HEADER_SIZE;
 
-	// Put new block at the begining of the freelist¸link it in
+	// Put new block at the beginning of the freelist¸ link it in
 	let oldFreelistHead = this.uint32[1];
-	ptr.set32(0, oldFreelistHead);
-	this.uint32[1] = ptr._base;
+	let base = ptr._base;
+
+	// Forward link to old head
+	this.uint32[(base + BLOCK_HEADER_SIZE) / 4] = oldFreelistHead;
+
+	// Backward link from here to head (nowhere)
+	this.uint32[(base + BLOCK_HEADER_SIZE) / 4 + 1] = 0;
+
+
+	if (oldFreelistHead !== 0) {
+	    // Backward link from old head
+	    this.uint32[(oldFreelistHead + BLOCK_HEADER_SIZE) / 4 + 1] = base;
+	}
+
+	// New head (this block)
+	this.uint32[1] = base;
 
 	// Set free bit to 1
-	this.uint32[ptr._base / 4 + 1] |= 1;
+	this.uint32[base / 4 + 1] |= 1;
     }
 
     left() {
@@ -274,6 +313,7 @@ class Arena {
 
 	let freeBlock = this.uint32[1];
 	let freeListLength = 0;
+	let prev = 0;
 
 	while (freeBlock !== 0) {
 	    freeListLength += 1;
@@ -282,6 +322,13 @@ class Arena {
 		throw new Error("free bit on block " + freeBlock + " is not set");
 	    }
 
+	    let prevInBlock = this.uint32[(freeBlock + BLOCK_HEADER_SIZE) / 4 + 1];
+	    if (prevInBlock !== prev) {
+		throw new Error("invalid backward link in freelist, " +
+				prevInBlock + " instead of " + prev + " @ " + freeBlock);
+	    }
+
+	    prev = freeBlock;
 	    freeBlock = this.uint32[(freeBlock + BLOCK_HEADER_SIZE) / 4];
 	}
 

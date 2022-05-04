@@ -47,6 +47,31 @@ describe("arena", () => {
 	let cut2 = arena.Arena.existing(cut.bytes);
     });
 
+    it("can free twice", () => {
+	let cut = arena.Arena.create(64);
+	let ptr1 = cut.alloc(16);
+	let ptr2 = cut.alloc(16);
+
+	cut.free(ptr1);
+	cut.free(ptr2);
+	cut.sanityCheck();
+    });
+
+    it("can reallocate middle block", () => {
+	let cut = arena.Arena.create(128);
+	let ptr1 = cut.alloc(16);
+	let ptr2 = cut.alloc(32);
+	let ptr3 = cut.alloc(16);
+
+	cut.free(ptr1);
+	cut.free(ptr2);
+	cut.free(ptr3);
+	cut.sanityCheck();
+
+	let ptr4 = cut.alloc(32);
+	cut.sanityCheck();
+    });
+
     it("can reallocate freed block", () => {
 	let cut = arena.Arena.create(32);
 	let ptr = cut.alloc(24);
@@ -76,22 +101,40 @@ describe("arena", () => {
 	expect(cut.sanityCheck()).toEqual([48, 48, 128-2*48-2*arena.BLOCK_HEADER_SIZE, 16]);
     });
 
+    it("can halve freed block in the middle of freelist", () => {
+	let cut = arena.Arena.create(256);
+	let ptrBefore = cut.alloc(8);
+	let halved = cut.alloc(128);
+	let ptrAfter = cut.alloc(8);
+
+	cut.free(ptrBefore);
+	cut.free(halved);
+	cut.free(ptrAfter);
+	cut.sanityCheck();
+
+	let ptr1 = cut.alloc(48);
+	cut.sanityCheck();
+
+	let ptr2 = cut.alloc(48);
+	cut.sanityCheck();
+    });
+
     it("can skip block too small", () => {
 	let cut = arena.Arena.create(64);
-	let small = cut.alloc(8);
-	let large = cut.alloc(16);
-	small.set32(1, 3);
-	large.set32(1, 4);
+	let small = cut.alloc(16);
+	let large = cut.alloc(32);
+	small.set32(2, 3);
+	large.set32(2, 4);
 
 	cut.free(large);
 	cut.free(small);
 
-	large = cut.alloc(16);
-	small = cut.alloc(8);
+	large = cut.alloc(32);
+	small = cut.alloc(16);
 
 	// Check if we got back the same blocks
-	expect(large.get32(1)).toBe(4);
-	expect(small.get32(1)).toBe(3);
+	expect(large.get32(2)).toBe(4);
+	expect(small.get32(2)).toBe(3);
 
 	cut.sanityCheck();
     });
