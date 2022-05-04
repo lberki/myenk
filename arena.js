@@ -12,7 +12,7 @@ let sync_internal = require("./sync_internal.js");
 
 const ARENA_HEADER_SIZE = 32;
 const BLOCK_HEADER_SIZE = 8;
-const MIN_ALLOC_SIZE = 4;
+const MIN_ALLOC_SIZE = 8;
 const MAGIC = 0xd1ce4011;
 
 // Block header:
@@ -131,7 +131,7 @@ class Arena {
 
 		// Return the perfectly matched block
 		return next;
-	    } else if (nextSize >= size + BLOCK_HEADER_SIZE + 4) {  // 4: minimum alloc size
+	    } else if (nextSize >= size + BLOCK_HEADER_SIZE + MIN_ALLOC_SIZE) {
 		// Larger block, cut it in half
 		let secondHalf = next + size + BLOCK_HEADER_SIZE;
 

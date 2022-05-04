@@ -35,7 +35,7 @@ describe("arena", () => {
 	let cut = arena.Arena.create(32);
 	let ptr = cut.alloc(1);
 	expect(ptr.size()).toBe(1);
-	expect(cut.left()).toBe(32 - 4 - arena.BLOCK_HEADER_SIZE);
+	expect(cut.left()).toBe(32 - 8 - arena.BLOCK_HEADER_SIZE);
 	expect(() => { ptr.get8(1); }).toThrow();
 	cut.free(ptr);
 	expect(cut.left()).toBe(32);
