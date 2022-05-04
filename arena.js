@@ -118,8 +118,13 @@ class Arena {
 	    let nextSize = this.uint32[next / 4];
 
 	    if (nextSize === size) {
-		// Perfect match, remove from freelist and return
+		// Perfect match, remove from freelist
 		this.uint32[prev / 4] = this.uint32[(next + BLOCK_HEADER_SIZE) / 4];
+
+		// Flip free bit to zero
+		this.uint32[next / 4 + 1] &= ~1;
+
+		// Return the perfectly matched block
 		return next;
 	    } else if (nextSize >= size + BLOCK_HEADER_SIZE + 4) {  // 4: minimum alloc size
 		// Larger block, cut it in half
@@ -129,21 +134,27 @@ class Arena {
 		// 1. Size (what is left after cutting the amount to be allocated)
 		this.uint32[secondHalf / 4] = nextSize - size - BLOCK_HEADER_SIZE;
 
-		// 2. Prev ptr (to the first half)
-		this.uint32[secondHalf / 4 + 1] = next << 1;
+		// 2. Prev ptr (to the first half). Free bit is set.
+		this.uint32[secondHalf / 4 + 1] = (next << 1) | 1;
 
 		// 3. Update prev ptr in next block or arena last block ptr if last block is halved
 		if (next === this.uint32[6]) {
 		    this.uint32[6] = secondHalf;
 		} else {
 		    let afterNext = next + BLOCK_HEADER_SIZE + (this.uint32[next / 4] + 3) & ~3;
-		    this.uint32[afterNext / 4 + 1] = secondHalf << 1;
+		    let afterNextFree = this.uint32[afterNext / 4 + 1] & 1;
+
+		    // Keep free bit
+		    this.uint32[afterNext / 4 + 1] = (secondHalf << 1) | afterNextFree;
 		}
+
+		// Flip free bit on the block we are about to return to zero
+		this.uint32[next / 4 + 1] &= ~1;
 
 		// Next ptr in the first half will be updated by caller (we can't do it here because
 		// the allocation size may be rounded up)
 
-		// Replace next in freelist with secondHalf
+		// Replace next in freelist with secondHalf.
 		this.uint32[(secondHalf + BLOCK_HEADER_SIZE) / 4] =
 		    this.uint32[(next + BLOCK_HEADER_SIZE) / 4];
 		this.uint32[prev / 4] = secondHalf;
@@ -204,10 +215,18 @@ class Arena {
 	let size = this.uint32[ptr._base / 4];
 	let allocSize = (size + 3) & ~3;
 	debuglog("freeing %d bytes @ %d", size, ptr._base);
+
+	// Increase free byte count in header
+
 	this.uint32[2] = this.uint32[2] + allocSize + BLOCK_HEADER_SIZE;
+
+	// Put new block at the begining of the freelist¸link it in
 	let oldFreelistHead = this.uint32[1];
 	ptr.set32(0, oldFreelistHead);
 	this.uint32[1] = ptr._base;
+
+	// Set free bit to 1
+	this.uint32[ptr._base / 4 + 1] |= 1;
     }
 
     left() {
@@ -238,6 +257,15 @@ class Arena {
 
 	if (this.uint32[3] !== nextBlock) {
 	    throw new Error("high water mark is " + this.uint32[3] + " not " + nextBlock);
+	}
+
+	let freeBlock = this.uint32[1];
+	while (freeBlock !== 0) {
+	    if ((this.uint32[freeBlock / 4 + 1] & 1) !== 1) {
+		throw new Error("free bit on block " + freeBlock + " is not set");
+	    }
+
+	    freeBlock = this.uint32[(freeBlock + BLOCK_HEADER_SIZE) / 4];
 	}
 
 	return sizes;
