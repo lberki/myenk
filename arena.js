@@ -1,7 +1,6 @@
 "use strict";
 
 // TODO:
-// - move freeStart to a field (will be shared with other threads)
 // - Figure out why # private members don't work
 // - Implement statistics (fragmentation, blocks, histogram, etc.)
 
@@ -245,10 +244,16 @@ class Arena {
 	let sizes = [];
 	let nextBlock = this.uint32[5];
 	let lastBlock = 0;
+	let blocksWithFreeBit = 0;
 
 	while (nextBlock < this.uint32[3]) {
 	    let nextSize = this.uint32[nextBlock / 4];
 	    let prevInBlock = this.uint32[nextBlock / 4 + 1] >> 1;
+
+	    if (this.uint32[nextBlock /4 + 1] & 1) {
+		blocksWithFreeBit += 1;
+	    }
+
 	    if (prevInBlock !== lastBlock) {
 		throw new Error(
 		    "block @ " + nextBlock + " has prev ptr " + prevInBlock + " not " + lastBlock);
@@ -268,12 +273,21 @@ class Arena {
 	}
 
 	let freeBlock = this.uint32[1];
+	let freeListLength = 0;
+
 	while (freeBlock !== 0) {
+	    freeListLength += 1;
+
 	    if ((this.uint32[freeBlock / 4 + 1] & 1) !== 1) {
 		throw new Error("free bit on block " + freeBlock + " is not set");
 	    }
 
 	    freeBlock = this.uint32[(freeBlock + BLOCK_HEADER_SIZE) / 4];
+	}
+
+	if (freeListLength !== blocksWithFreeBit) {
+	    throw new Error("freelist length is " + freeListLength + " but " +
+			    blocksWithFreeBit + " blocks with the free bit set");
 	}
 
 	return sizes;
