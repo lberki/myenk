@@ -166,22 +166,9 @@ class Arena {
 	}
     }
 
-    fromAddr(addr) {
-	return new Ptr(this, addr);
-    }
-
-    allocLocked(size) {
-	let allocSize = (size + 3) & ~3;  // Round up to the nearest multiple of 4
-	let fromFreeList = this._fromFreeList(allocSize);
-	if (fromFreeList !== null) {
-	    this.uint32[fromFreeList / 4] = size;
-	    debuglog("allocated %d bytes @ %d from freelist", size, fromFreeList);
-	    this.uint32[2] = this.uint32[2] - allocSize - BLOCK_HEADER_SIZE;
-	    return new Ptr(this, fromFreeList);
-	}
-
-	let base = this.uint32[3];
-	if (base + allocSize + BLOCK_HEADER_SIZE > this.bytes.byteLength) {
+    _fromBump(allocSize) {
+	let newBlock = this.uint32[3];
+	if (newBlock + allocSize + BLOCK_HEADER_SIZE > this.bytes.byteLength) {
 	    throw new Error("out of memory");
 	}
 
@@ -190,25 +177,42 @@ class Arena {
 
 	// Set lowest block address, if necessary
 	if (this.uint32[5] === 0) {
-	    this.uint32[5] = base;
+	    this.uint32[5] = newBlock;
 	}
 
-	// Set next block address in previous highest block, update highest block
-	// TODO: This needs to be updated if the last block is split
-	let prevHighest = this.uint32[6];
+	// Size is set by caller (the size we know is rounded up)
 
-	// Set size in block header
-	this.uint32[base / 4] = size;
+	// Set next block address in previous highest block, update highest block
+	let prevHighest = this.uint32[6];
+	this.uint32[6] = newBlock;
 
 	// Set prev pointer in block header
-	this.uint32[base / 4 + 1] = prevHighest << 1;
+	this.uint32[newBlock / 4 + 1] = prevHighest << 1;
 
-	// Set last block in arena header
-	this.uint32[6] = base;
+	return newBlock;
+    }
 
-	debuglog("allocated %d bytes @ %d by expansion", size, base);
+    fromAddr(addr) {
+	return new Ptr(this, addr);
+    }
+
+    allocLocked(size) {
+	let allocSize = (size + 3) & ~3;  // Round up to the nearest multiple of 4
+	let newBlock  = this._fromFreeList(allocSize);
+	if (newBlock !== null) {
+	    debuglog("allocated %d bytes @ %d from freelist", size, newBlock);
+	} else {
+	    newBlock = this._fromBump(allocSize);
+	    debuglog("allocated %d bytes @ %d by expansion", size, newBlock);
+	}
+
+	// Set size on the newly allocated block
+	this.uint32[newBlock / 4] = size;
+
+	// Decrease free byte count in header
 	this.uint32[2] = this.uint32[2] - allocSize - BLOCK_HEADER_SIZE;
-	return new Ptr(this, base);
+
+	return new Ptr(this, newBlock);
     }
 
     freeLocked(ptr) {
@@ -217,7 +221,6 @@ class Arena {
 	debuglog("freeing %d bytes @ %d", size, ptr._base);
 
 	// Increase free byte count in header
-
 	this.uint32[2] = this.uint32[2] + allocSize + BLOCK_HEADER_SIZE;
 
 	// Put new block at the begining of the freelist¸link it in
