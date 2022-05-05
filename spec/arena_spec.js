@@ -64,7 +64,9 @@ describe("arena", () => {
 	let ptr3 = cut.alloc(16);
 
 	cut.free(ptr1);
+	cut.sanityCheck();
 	cut.free(ptr2);
+	cut.sanityCheck();
 	cut.free(ptr3);
 	cut.sanityCheck();
 
@@ -119,24 +121,64 @@ describe("arena", () => {
 	cut.sanityCheck();
     });
 
-    it("can skip block too small", () => {
-	let cut = arena.Arena.create(64);
-	let small = cut.alloc(16);
-	let large = cut.alloc(32);
-	small.set32(2, 3);
-	large.set32(2, 4);
+    it("can merge free blocks from the middle", () => {
+	let cut = arena.Arena.create(3*8 + 3*arena.BLOCK_HEADER_SIZE);
 
-	cut.free(large);
-	cut.free(small);
+	let ptr1 = cut.alloc(8);
+	let ptr2 = cut.alloc(8);
+	let ptr3 = cut.alloc(8);
 
-	large = cut.alloc(32);
-	small = cut.alloc(16);
+	cut.free(ptr1);
+	cut.free(ptr3);
+	cut.free(ptr2);
 
-	// Check if we got back the same blocks
-	expect(large.get32(2)).toBe(4);
-	expect(small.get32(2)).toBe(3);
+	let ptr = cut.alloc(24 + 2*arena.BLOCK_HEADER_SIZE);
+    });
 
-	cut.sanityCheck();
+    it("can merge free blocks from the beginning", () => {
+	let cut = arena.Arena.create(3*8 + 3*arena.BLOCK_HEADER_SIZE);
+
+	let ptr1 = cut.alloc(8);
+	let ptr2 = cut.alloc(8);
+	let ptr3 = cut.alloc(8);
+
+	cut.free(ptr1);
+	cut.free(ptr2);
+	cut.free(ptr3);
+
+	let ptr = cut.alloc(24 + 2*arena.BLOCK_HEADER_SIZE);
+    });
+
+    it("can merge free blocks from the end", () => {
+	let cut = arena.Arena.create(3*8 + 3*arena.BLOCK_HEADER_SIZE);
+
+	let ptr1 = cut.alloc(8);
+	let ptr2 = cut.alloc(8);
+	let ptr3 = cut.alloc(8);
+
+	cut.free(ptr3);
+	cut.free(ptr2);
+	cut.free(ptr1);
+
+	let ptr = cut.alloc(24 + 2*arena.BLOCK_HEADER_SIZE);
+    });
+
+    it("can merge free blocks in the middle of freelist", () => {
+	let cut = arena.Arena.create(3*8 + 2*16 + 5*arena.BLOCK_HEADER_SIZE);
+
+	let ptr1 = cut.alloc(8);
+	let ptr2 = cut.alloc(8);
+	let ptr3 = cut.alloc(8);
+	let ptr4 = cut.alloc(16);
+	let ptr5 = cut.alloc(16);
+
+	cut.free(ptr4);
+	cut.free(ptr1);
+	cut.free(ptr3);
+	cut.free(ptr2);
+	cut.free(ptr5);
+
+	let ptr = cut.alloc(24 + 2*arena.BLOCK_HEADER_SIZE);
     });
 
     it("can throw OOM", () => {
@@ -158,7 +200,7 @@ describe("arena", () => {
     it("parallel allocation stress test", () => {
 	const NUM_WORKERS = 4;
 
-	let w = world.World.create(1024);
+	let w = world.World.create(2048);
 	w.root().start = w.createLatch(1);
 
 	let workers = new Array();

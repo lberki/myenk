@@ -10,11 +10,8 @@ function parallelAllocStressTest(w, t, param) {
 	// TODO: it would be nice to exercise the memory we get to verify that two regions don't
 	// overlap, but then I'd have to figure out how to convey an assertion failure from here to
 	// the main test thread
-	//
-	// TODO: it would also be nice to use multiple allocation sizes, but Arena currently has a
-	// memory fragmentation problem in that case, grump.
 	let b1 = a.alloc(32);
-	let b2 = a.alloc(32);
+	let b2 = a.alloc(64);
 	a.free(b1);
 	a.free(b2);
     }

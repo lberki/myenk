@@ -1,8 +1,6 @@
 "use strict";
 
 // TODO:
-// - Coalesce consecutive free blocks
-// - Check whether allocating/deallocating 32 and 64 bytes in Arena does not OOM anymore
 // - Add a stress test that involves a lot of allocating / deallocating objects
 
 // - Add timeout to lock/latch and make it somehow configurable for tests

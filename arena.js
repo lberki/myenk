@@ -13,6 +13,7 @@ const ARENA_HEADER_SIZE = 32;
 const BLOCK_HEADER_SIZE = 8;
 const MIN_ALLOC_SIZE = 8;
 const MAGIC = 0xd1ce4011;
+const EXTENDED_SANITY_CHECKS = true;
 
 // Block header:
 // 4 bytes: size of block (not including header)
@@ -74,8 +75,8 @@ class Arena {
 	this._criticalSection = new sync_internal.CriticalSection(this.int32, 4);
 	debuglog("created arena(size=%d)", bytes.byteLength - ARENA_HEADER_SIZE);
 
-	this.alloc = this._criticalSection.wrap(this, this.allocLocked);
-	this.free = this._criticalSection.wrap(this, this.freeLocked);
+	this.alloc = this._criticalSection.wrap(this, this._allocLocked);
+	this.free = this._criticalSection.wrap(this, this._freeLocked);
     }
 
     _init(size) {
@@ -110,6 +111,20 @@ class Arena {
 	return arena;
     }
 
+    _unlinkFromFreeList(addr) {
+	let next = this.uint32[(addr + BLOCK_HEADER_SIZE) / 4];
+	let prevBlock = this.uint32[(addr + BLOCK_HEADER_SIZE) / 4 + 1];
+	let prevAddr = prevBlock == 0 ? 4 : prevBlock + BLOCK_HEADER_SIZE;
+
+	// Forward link
+	this.uint32[prevAddr / 4] = next;
+
+	if (next !== 0) {
+	    // Backward link
+	    this.uint32[(next + BLOCK_HEADER_SIZE) / 4 + 1] = prevBlock;
+	}
+    }
+
     _fromFreeList(size) {
 	let prevBlock = 0;  // Previous block on freelist (0: header)
 
@@ -125,15 +140,7 @@ class Arena {
 
 	    if (nextSize === size) {
 		// Perfect match, remove from freelist
-		let afterNext = this.uint32[(next + BLOCK_HEADER_SIZE) / 4];
-
-		// Forward link
-		this.uint32[prevAddr / 4] = afterNext;
-
-		if (afterNext !== 0) {
-		    // Backward link
-		    this.uint32[(afterNext + BLOCK_HEADER_SIZE) / 4 + 1] = prevBlock;
-		}
+		this._unlinkFromFreeList(next);
 
 		// Flip free bit to zero
 		this.uint32[next / 4 + 1] &= ~1;
@@ -222,7 +229,11 @@ class Arena {
 	return new Ptr(this, addr);
     }
 
-    allocLocked(size) {
+    _allocLocked(size) {
+	if (EXTENDED_SANITY_CHECKS) {
+	    this.sanityCheck();
+	}
+
 	let allocSize = roundUp(size);
 	let newBlock  = this._fromFreeList(allocSize);
 	if (newBlock !== null) {
@@ -238,10 +249,36 @@ class Arena {
 	// Decrease free byte count in header
 	this.uint32[2] = this.uint32[2] - allocSize - BLOCK_HEADER_SIZE;
 
+	if (EXTENDED_SANITY_CHECKS) {
+	    this.sanityCheck();
+	}
+
 	return new Ptr(this, newBlock);
     }
 
-    freeLocked(ptr) {
+    _mergeBlocks(prev, next) {
+	let prevAllocSize = roundUp(this.uint32[prev / 4]);
+	let nextAllocSize = roundUp(this.uint32[next / 4]);
+	let newSize = prevAllocSize + nextAllocSize + BLOCK_HEADER_SIZE;
+	debuglog("merging blocks at " + prev + " and " + next + ", new size is " + newSize);
+	this.uint32[prev / 4] = newSize;
+	this._unlinkFromFreeList(next);
+
+	if (next !== this.uint32[6]) {
+	    // Set the prev pointer of the block after next to prev
+	    let afterNext = next + nextAllocSize + BLOCK_HEADER_SIZE;
+	    this.uint32[afterNext / 4 + 1] = prev << 1;
+	} else {
+	    // The last block was merged away. Update header.
+	    this.uint32[6] = prev;
+	}
+    }
+
+    _freeLocked(ptr) {
+	if (EXTENDED_SANITY_CHECKS) {
+	    this.sanityCheck();
+	}
+
 	let size = this.uint32[ptr._base / 4];
 	let allocSize = roundUp(size);
 	debuglog("freeing %d bytes @ %d", size, ptr._base);
@@ -270,6 +307,45 @@ class Arena {
 
 	// Set free bit to 1
 	this.uint32[base / 4 + 1] |= 1;
+
+	// Merge free blocks after this one
+	while (true) {
+	    let allocSize = roundUp(this.uint32[base / 4]);
+	    let nextBlock = base + allocSize + BLOCK_HEADER_SIZE;
+	    if (nextBlock >= this.uint32[3]) {
+		// This was the last block. The condition should theoretically be "==", but let's
+		// not get in an infinite loop if not everything works perfectly
+		break;
+	    }
+
+	    if ((this.uint32[nextBlock / 4 + 1] & 1) !== 1) {
+		// Next block is not free
+		break;
+	    }
+
+	    this._mergeBlocks(base, nextBlock);
+	}
+
+	// Merge free blocks before this one
+	while (true) {
+	    let prevBlock = this.uint32[(base / 4) + 1] >> 1;
+	    if (prevBlock === 0) {
+		// This was the first block
+		break;
+	    }
+
+	    if ((this.uint32[prevBlock / 4 + 1] & 1) !== 1) {
+		// Prev block is not free
+		break;
+	    }
+
+	    this._mergeBlocks(prevBlock, base);
+	    base = prevBlock;
+	}
+
+	if (EXTENDED_SANITY_CHECKS) {
+	    this.sanityCheck();
+	}
     }
 
     left() {
@@ -282,17 +358,29 @@ class Arena {
 	let lastBlock = 0;
 	let blocksWithFreeBit = 0;
 
+	if (this.uint32[5] === 0) {
+	    return;
+	}
+
+	let lastFree = false;
+
 	while (nextBlock < this.uint32[3]) {
 	    let nextSize = this.uint32[nextBlock / 4];
 	    let prevInBlock = this.uint32[nextBlock / 4 + 1] >> 1;
+	    let thisFree = (this.uint32[nextBlock / 4 + 1] & 1) === 1;
+
+	    if (thisFree && lastFree) {
+		throw new Error("subsequent blocks " + lastBlock + " and " + nextBlock +
+				" are both free");
+	    }
 
 	    if (this.uint32[nextBlock /4 + 1] & 1) {
 		blocksWithFreeBit += 1;
 	    }
 
 	    if (prevInBlock !== lastBlock) {
-		throw new Error(
-		    "block @ " + nextBlock + " has prev ptr " + prevInBlock + " not " + lastBlock);
+		throw new Error("block @ " + nextBlock + " has prev ptr " + prevInBlock + " not " +
+				lastBlock + " hwm is " + this.uint32[3]);
 	    }
 
 	    sizes.push(nextSize);
