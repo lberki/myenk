@@ -24,6 +24,7 @@ const HEADER = {
     "LOWEST_BLOCK": 5,
     "HIGHEST_BLOCK": 6,
 }
+
 // Block header:
 // 4 bytes: size of block (not including header)
 // 4 bytes: (address of header of previous block << 1) | (1 if free, otherwise 0)

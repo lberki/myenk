@@ -24,19 +24,12 @@ let sync_internal = require("./sync_internal.js");
 
 const PRIVATE = Symbol("World private data");
 
-const HEADER_SIZE = 16;
+const HEADER_SIZE = 32;
 const OBJECT_SIZE = 16;
 const MAGIC = 0x1083041d;
 
 const THREAD_RC_DELTA = 1000;    // Change in refcount for references from threads
 const WORLD_RC_DELTA = 1;        // Change in refcount for references from within the world
-
-const HEADER = {
-    "MAGIC": 0,
-    "ROOT": 1,
-    "OBJECT_COUNT": 2,
-    "LOCK": 3
-};
 
 const ObjectTypes = [
     null,  // marker so that zero is not a valid object type in RAM,
@@ -49,11 +42,15 @@ for (let i = 1; i < ObjectTypes.length; i++) {
     ObjectTypes[i]._registerForWorld(PRIVATE, i);
 }
 
-// World header:
-// 0: magic (0x1083041d)
-// 1: address of root object
-// 2: object count (not including root object)
-// 3: Lock
+const HEADER = {
+    "MAGIC": 0,
+    "ROOT": 1,  // Address of root object
+    "OBJECT_COUNT": 2,  // Not including root object
+    "LOCK": 3,
+    "OBJECT_LIST": 4,  // Address of object list block
+    "OBJECT_LIST_SIZE": 5,  // Number of used object IDs (=high water mark)
+    "OBJECT_FREELIST": 6,  // head of object ID freelist within object list block
+};
 
 class World {
     constructor(a, header) {
