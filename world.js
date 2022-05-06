@@ -31,6 +31,13 @@ const MAGIC = 0x1083041d;
 const THREAD_RC_DELTA = 1000;    // Change in refcount for references from threads
 const WORLD_RC_DELTA = 1;        // Change in refcount for references from within the world
 
+const HEADER = {
+    "MAGIC": 0,
+    "ROOT": 1,
+    "OBJECT_COUNT": 2,
+    "LOCK": 3
+};
+
 const ObjectTypes = [
     null,  // marker so that zero is not a valid object type in RAM,
     dictionary.Dictionary,
@@ -75,10 +82,10 @@ class World {
 	let result = new World(a, header);
 	result._root = result.createDictionary();
 
-	header.set32(0, MAGIC);  // Magic
-	header.set32(1, result._root[PRIVATE]._ptr._base);  // Root object
-	header.set32(2, 0);  // Object count
-	header.set32(3, 0);  // Lock
+	header.set32(HEADER.MAGIC, MAGIC);  // Magic
+	header.set32(HEADER.ROOT, result._root[PRIVATE]._ptr._base);  // Root object
+	header.set32(HEADER.OBJECT_COUNT, 0);  // Object count
+	header.set32(HEADER.LOCK, 0);  // Lock
 
 	return result;
     }
@@ -86,13 +93,13 @@ class World {
     static existing(sab) {
 	let a = arena.Arena.existing(sab);
 	let header = a.fromAddr(arena.ARENA_HEADER_SIZE);
-	if (header.get32(0) !== MAGIC) {
-	    throw new Error("invalid world magic" + header.get32(0));
+	if (header.get32(HEADER.MAGIC) !== MAGIC) {
+	    throw new Error("invalid world magic" + header.get32(HEADER.MAGIC));
 	}
 
 	let result = new World(a, header);
 	result._withMutation(() => {
-	    result._root = result._localFromAddr(header.get32(1));
+	    result._root = result._localFromAddr(header.get32(HEADER.ROOT));
 	});
 
 	return result;
@@ -107,7 +114,7 @@ class World {
     }
 
     objectCount() {
-	return this._header.get32(2);
+	return this._header.get32(HEADER.OBJECT_COUNT);
     }
 
     buffer() {
@@ -169,7 +176,9 @@ class World {
 
 	    this._criticalSection.run(() => {
 		// Decrease object count
-		this._header.set32(2, this._header.get32(2) - objectsFreed);
+		this._header.set32(
+		    HEADER.OBJECT_COUNT,
+		    this._header.get32(HEADER.OBJECT_COUNT) - objectsFreed);
 	    });
 
 	    this._toFree = null;
@@ -202,7 +211,9 @@ class World {
 
 	// Register the object on the chain and thus make it eligible for GC.
 	this._criticalSection.run(() => {
-	    this._header.set32(2, this._header.get32(2) + 1);
+	    this._header.set32(
+		HEADER.OBJECT_COUNT,
+		this._header.get32(HEADER.OBJECT_COUNT) + 1);
 	});
 
 	return pub;
