@@ -15,6 +15,15 @@ const MIN_ALLOC_SIZE = 8;
 const MAGIC = 0xd1ce4011;
 const EXTENDED_SANITY_CHECKS = true;
 
+const HEADER = {
+    "MAGIC": 0,
+    "FREELIST_HEAD": 1,
+    "BYTES_LEFT": 2,
+    "HIGH_WATER_MARK": 3,
+    "LOCK": 4,
+    "LOWEST_BLOCK": 5,
+    "HIGHEST_BLOCK": 6,
+}
 // Block header:
 // 4 bytes: size of block (not including header)
 // 4 bytes: (address of header of previous block << 1) | (1 if free, otherwise 0)
@@ -72,7 +81,7 @@ class Arena {
 	this.int32 = new Int32Array(this.bytes);
 	this.uint8 = new Uint8Array(this.bytes);
 
-	this._criticalSection = new sync_internal.CriticalSection(this.int32, 4);
+	this._criticalSection = new sync_internal.CriticalSection(this.int32, HEADER.LOCK);
 	debuglog("created arena(size=%d)", bytes.byteLength - ARENA_HEADER_SIZE);
 
 	this.alloc = this._criticalSection.wrap(this, this._allocLocked);
@@ -80,13 +89,13 @@ class Arena {
     }
 
     _init(size) {
-	this.uint32[0] = MAGIC;  // Magic
-	this.uint32[1] = 0;  // Start of freelist
-	this.uint32[2] = this.bytes.byteLength - ARENA_HEADER_SIZE;  // free space left
-	this.uint32[3] = ARENA_HEADER_SIZE;  // high water mark
-	this.uint32[4] = 0;  // Lock
-	this.uint32[5] = 0;  // Block with lowest address, 0 if none
-	this.uint32[6] = 0;  // Block with highest address, 0 if none
+	this.uint32[HEADER.MAGIC] = MAGIC;  // Magic
+	this.uint32[HEADER.FREELIST_HEAD] = 0;  // Start of freelist
+	this.uint32[HEADER.BYTES_LEFT] = this.bytes.byteLength - ARENA_HEADER_SIZE;  // free space left
+	this.uint32[HEADER.HIGH_WATER_MARK] = ARENA_HEADER_SIZE;  // high water mark
+	this.uint32[HEADER.LOCK] = 0;  // Lock
+	this.uint32[HEADER.LOWEST_BLOCK] = 0;  // Block with lowest address, 0 if none
+	this.uint32[HEADER.HIGHEST_BLOCK] = 0;  // Block with highest address, 0 if none
     }
 
     static create(size) {
@@ -103,8 +112,8 @@ class Arena {
 
     static existing(sab) {
 	let arena = new Arena(sab);
-	if (arena.uint32[0] != MAGIC) {
-	    throw new Error("invalid arena magic " + arena.uint32[0]);
+	if (arena.uint32[HEADER.MAGIC] != MAGIC) {
+	    throw new Error("invalid arena magic " + arena.uint32[HEADER.MAGIC]);
 	}
 
 	debuglog("created arena from existing(size=%d)", arena.size);
@@ -159,8 +168,8 @@ class Arena {
 		this.uint32[secondHalf / 4 + 1] = (next << 1) | 1;
 
 		// 3. Update prev ptr in next block or arena last block ptr if last block is halved
-		if (next === this.uint32[6]) {
-		    this.uint32[6] = secondHalf;
+		if (next === this.uint32[HEADER.HIGHEST_BLOCK]) {
+		    this.uint32[HEADER.HIGHEST_BLOCK] = secondHalf;
 		} else {
 		    let afterNext = next + BLOCK_HEADER_SIZE + roundUp(this.uint32[next / 4]);
 		    let afterNextFree = this.uint32[afterNext / 4 + 1] & 1;
@@ -200,24 +209,24 @@ class Arena {
     }
 
     _fromBump(allocSize) {
-	let newBlock = this.uint32[3];
+	let newBlock = this.uint32[HEADER.HIGH_WATER_MARK];
 	if (newBlock + allocSize + BLOCK_HEADER_SIZE > this.bytes.byteLength) {
 	    throw new Error("out of memory");
 	}
 
 	// Bump high water mark
-	this.uint32[3] += allocSize + BLOCK_HEADER_SIZE;
+	this.uint32[HEADER.HIGH_WATER_MARK] += allocSize + BLOCK_HEADER_SIZE;
 
 	// Set lowest block address, if necessary
-	if (this.uint32[5] === 0) {
-	    this.uint32[5] = newBlock;
+	if (this.uint32[HEADER.LOWEST_BLOCK] === 0) {
+	    this.uint32[HEADER.LOWEST_BLOCK] = newBlock;
 	}
 
 	// Size is set by caller (the size we know is rounded up)
 
 	// Set next block address in previous highest block, update highest block
-	let prevHighest = this.uint32[6];
-	this.uint32[6] = newBlock;
+	let prevHighest = this.uint32[HEADER.HIGHEST_BLOCK];
+	this.uint32[HEADER.HIGHEST_BLOCK] = newBlock;
 
 	// Set prev pointer in block header
 	this.uint32[newBlock / 4 + 1] = prevHighest << 1;
@@ -247,7 +256,8 @@ class Arena {
 	this.uint32[newBlock / 4] = size;
 
 	// Decrease free byte count in header
-	this.uint32[2] = this.uint32[2] - allocSize - BLOCK_HEADER_SIZE;
+	this.uint32[HEADER.BYTES_LEFT] = this.uint32[HEADER.BYTES_LEFT] -
+	    allocSize - BLOCK_HEADER_SIZE;
 
 	if (EXTENDED_SANITY_CHECKS) {
 	    this.sanityCheck();
@@ -264,13 +274,13 @@ class Arena {
 	this.uint32[prev / 4] = newSize;
 	this._unlinkFromFreeList(next);
 
-	if (next !== this.uint32[6]) {
+	if (next !== this.uint32[HEADER.HIGHEST_BLOCK]) {
 	    // Set the prev pointer of the block after next to prev
 	    let afterNext = next + nextAllocSize + BLOCK_HEADER_SIZE;
 	    this.uint32[afterNext / 4 + 1] = prev << 1;
 	} else {
 	    // The last block was merged away. Update header.
-	    this.uint32[6] = prev;
+	    this.uint32[HEADER.HIGHEST_BLOCK] = prev;
 	}
     }
 
@@ -284,10 +294,11 @@ class Arena {
 	debuglog("freeing %d bytes @ %d", size, ptr._base);
 
 	// Increase free byte count in header
-	this.uint32[2] = this.uint32[2] + allocSize + BLOCK_HEADER_SIZE;
+	this.uint32[HEADER.BYTES_LEFT] = this.uint32[HEADER.BYTES_LEFT] +
+	    allocSize + BLOCK_HEADER_SIZE;
 
 	// Put new block at the beginning of the freelist¸ link it in
-	let oldFreelistHead = this.uint32[1];
+	let oldFreelistHead = this.uint32[HEADER.FREELIST_HEAD];
 	let base = ptr._base;
 
 	// Forward link to old head
@@ -303,7 +314,7 @@ class Arena {
 	}
 
 	// New head (this block)
-	this.uint32[1] = base;
+	this.uint32[HEADER.FREELIST_HEAD] = base;
 
 	// Set free bit to 1
 	this.uint32[base / 4 + 1] |= 1;
@@ -312,7 +323,7 @@ class Arena {
 	while (true) {
 	    let allocSize = roundUp(this.uint32[base / 4]);
 	    let nextBlock = base + allocSize + BLOCK_HEADER_SIZE;
-	    if (nextBlock >= this.uint32[3]) {
+	    if (nextBlock >= this.uint32[HEADER.HIGH_WATER_MARK]) {
 		// This was the last block. The condition should theoretically be "==", but let's
 		// not get in an infinite loop if not everything works perfectly
 		break;
@@ -349,22 +360,22 @@ class Arena {
     }
 
     left() {
-	return this.uint32[2];
+	return this.uint32[HEADER.BYTES_LEFT];
     }
 
     sanityCheck() {
 	let sizes = [];
-	let nextBlock = this.uint32[5];
+	let nextBlock = this.uint32[HEADER.LOWEST_BLOCK];
 	let lastBlock = 0;
 	let blocksWithFreeBit = 0;
 
-	if (this.uint32[5] === 0) {
+	if (this.uint32[HEADER.LOWEST_BLOCK] === 0) {
 	    return;
 	}
 
 	let lastFree = false;
 
-	while (nextBlock < this.uint32[3]) {
+	while (nextBlock < this.uint32[HEADER.HIGH_WATER_MARK]) {
 	    let nextSize = this.uint32[nextBlock / 4];
 	    let prevInBlock = this.uint32[nextBlock / 4 + 1] >> 1;
 	    let thisFree = (this.uint32[nextBlock / 4 + 1] & 1) === 1;
@@ -380,7 +391,7 @@ class Arena {
 
 	    if (prevInBlock !== lastBlock) {
 		throw new Error("block @ " + nextBlock + " has prev ptr " + prevInBlock + " not " +
-				lastBlock + " hwm is " + this.uint32[3]);
+				lastBlock + " hwm is " + this.uint32[HEADER.HIGH_WATER_MARK]);
 	    }
 
 	    sizes.push(nextSize);
@@ -388,15 +399,17 @@ class Arena {
 	    nextBlock += roundUp(nextSize) + BLOCK_HEADER_SIZE;
 	}
 
-	if (lastBlock !== this.uint32[6]) {
-	    throw new Error("last block is " + lastBlock + " from header: " + this.uint32[6]);
+	if (lastBlock !== this.uint32[HEADER.HIGHEST_BLOCK]) {
+	    throw new Error("last block is " + lastBlock + " from header: " +
+			    this.uint32[HEADER.HIGHEST_BLOCK]);
 	}
 
-	if (this.uint32[3] !== nextBlock) {
-	    throw new Error("high water mark is " + this.uint32[3] + " not " + nextBlock);
+	if (this.uint32[HEADER.HIGH_WATER_MARK] !== nextBlock) {
+	    throw new Error("high water mark is " + this.uint32[HEADER.HIGH_WATER_MARK] +
+			    " not " + nextBlock);
 	}
 
-	let freeBlock = this.uint32[1];
+	let freeBlock = this.uint32[HEADER.FREELIST_HEAD];
 	let freeListLength = 0;
 	let prev = 0;
 
