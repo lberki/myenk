@@ -42,7 +42,7 @@ class Lock extends localobject.LocalObject {
 
     _init(n) {
 	super._init();
-	this._ptr.set32(1, LOCK_BUFFER_TYPE);
+	this._setType(LOCK_BUFFER_TYPE);
 	this._int32[this._addr] = Lock.FREE;
     }
 
@@ -92,7 +92,7 @@ class Latch extends localobject.LocalObject {
 
     _init(n) {
 	super._init();
-	this._ptr.set32(1, LATCH_BUFFER_TYPE);
+	this._setType(LATCH_BUFFER_TYPE);
 	this._ptr.set32(0, n);
     }
 

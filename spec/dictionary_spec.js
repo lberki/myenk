@@ -21,29 +21,29 @@ describe("dictionary", () => {
 	obj = null;
 
 	await testutil.forceGc();
-	expect(w.left()).toBe(1024);
+	expect(w.objectCount()).toBe(0);
+	w.sanityCheck();
     });
 
     it("can free property", async () => {
 	let w = world.World.create(1024);
+	let before = w.left();
 	let obj = w.createDictionary();
 	obj.foo = 2;
 	obj.bar = 2;
 	obj = null;
 
 	await testutil.forceGc();
-	expect(w.left()).toBe(1024);
+	expect(w.left()).toBe(before);
     });
 
     it("can free deleted property", async () => {
 	let w = world.World.create(1024);
 	let obj = w.createDictionary();
+	let before = w.left();
 	obj.foo = 2;
 	delete obj.foo;
-	obj = null;
-
-	await testutil.forceGc();
-	expect(w.left()).toBe(1024);
+	expect(w.left()).toBe(before);
     });
 
     it("can overwrite property", () => {
@@ -81,7 +81,7 @@ describe("dictionary", () => {
 
 	obj = null;
 	await testutil.forceGc();
-	expect(w.left()).toBe(1024);
+	expect(w.objectCount()).toBe(0);
     });
 
     it("supports empty strings", async () => {
@@ -92,7 +92,7 @@ describe("dictionary", () => {
 
 	obj = null;
 	await testutil.forceGc();
-	expect(w.left()).toBe(1024);
+	expect(w.objectCount()).toBe(0);
     });
 
     it("increases refcount on object reference", async () => {
@@ -105,9 +105,10 @@ describe("dictionary", () => {
 	let leftBeforeGc = w.left();
 	await testutil.forceGc();
 	expect(w.left()).toBe(leftBeforeGc);
+	w.sanityCheck();
     });
 
-    it("decreases refcount on change object refeence", async () => {
+    it("decreases refcount on change object reference", async () => {
 	let w = world.World.create(1024);
 	let obj1 = w.createDictionary();
 	let obj2 = w.createDictionary();
@@ -115,9 +116,11 @@ describe("dictionary", () => {
 	obj2 = null;
 	obj1.foo = 1;
 	obj1 = null;
+	w.sanityCheck();
 
 	await testutil.forceGc();
-	expect(w.left()).toBe(1024);
+	expect(w.objectCount()).toBe(0);
+	w.sanityCheck();
     });
 
     it("decreases refcount on delete object refeence", async () => {
@@ -130,7 +133,7 @@ describe("dictionary", () => {
 	obj2 = null;
 
 	await testutil.forceGc();
-	expect(w.left()).toBe(1024);
+	expect(w.objectCount()).toBe(0);
     });
 
     it("supports simple object references", () => {
@@ -196,7 +199,7 @@ describe("dictionary", () => {
 	obj = null;
 	latch = null;
 	await testutil.forceGc();
-	expect(w.left()).toBe(1024);
+	expect(w.objectCount()).toBe(0);
     });
 
     it("multi-threaded single-dictionary stress test", async () => {

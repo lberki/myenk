@@ -27,9 +27,12 @@ const PRIVATE = Symbol("World private data");
 const HEADER_SIZE = 32;
 const OBJECT_SIZE = 16;
 const MAGIC = 0x1083041d;
+const EXTENDED_SANITY_CHECKS = true;
 
 const THREAD_RC_DELTA = 1000;    // Change in refcount for references from threads
 const WORLD_RC_DELTA = 1;        // Change in refcount for references from within the world
+
+const OBJLIST_INCREMENT = 4;     // Small enough to get triggered in test cases
 
 const ObjectTypes = [
     null,  // marker so that zero is not a valid object type in RAM,
@@ -45,11 +48,12 @@ for (let i = 1; i < ObjectTypes.length; i++) {
 const HEADER = {
     "MAGIC": 0,
     "ROOT": 1,  // Address of root object
-    "OBJECT_COUNT": 2,  // Not including root object
+    "OBJECT_COUNT": 2,  // including root object
     "LOCK": 3,
-    "OBJECT_LIST": 4,  // Address of object list block
-    "OBJECT_LIST_SIZE": 5,  // Number of used object IDs (=high water mark)
-    "OBJECT_FREELIST": 6,  // head of object ID freelist within object list block
+    "OBJLIST": 4,  // Address of object list block
+    "OBJLIST_SIZE": 5,  // Number of used object IDs (=high water mark)
+    "OBJLIST_CAPACITY": 6,  // Allocated length of objlist
+    "FREELIST": 7,  // head of object ID freelist within object list block
 };
 
 class World {
@@ -62,6 +66,7 @@ class World {
 	this._criticalSection = new sync_internal.CriticalSection(
 	    this._arena.int32,
 	    (header._base + arena.BLOCK_HEADER_SIZE) / 4 + 3);
+	this.sanityCheck = this._criticalSection.wrap(this, this._sanityCheckLocked);
     }
 
     static create(size) {
@@ -77,12 +82,17 @@ class World {
 	}
 
 	let result = new World(a, header);
-	result._root = result.createDictionary();
 
 	header.set32(HEADER.MAGIC, MAGIC);  // Magic
+	header.set32(HEADER.OBJECT_COUNT, 0);
+	header.set32(HEADER.LOCK, 0);
+	header.set32(HEADER.OBJLIST, 0);
+	header.set32(HEADER.OBJLIST_SIZE, 0);
+	header.set32(HEADER.OBJLIST_CAPACITY, 0);
+	header.set32(HEADER.FREELIST, 0);
+
+	result._root = result.createDictionary();
 	header.set32(HEADER.ROOT, result._root[PRIVATE]._ptr._base);  // Root object
-	header.set32(HEADER.OBJECT_COUNT, 0);  // Object count
-	header.set32(HEADER.LOCK, 0);  // Lock
 
 	return result;
     }
@@ -111,7 +121,7 @@ class World {
     }
 
     objectCount() {
-	return this._header.get32(HEADER.OBJECT_COUNT);
+	return this._header.get32(HEADER.OBJECT_COUNT) - 1;
     }
 
     buffer() {
@@ -131,6 +141,7 @@ class World {
     }
 
     // Run a mutation of the object graph.
+    //
     // This needs to be done like this because we don't want to try to lock an object to change its
     // refcount while we are mutating another one, so we record refcount changes during the mutation
     // and apply the after it is done. A refcount decrement can result in freeing objects which can
@@ -146,6 +157,8 @@ class World {
 	    return l();
 	} finally {
 	    let objectsFreed = 0;
+	    let idsToFree = [];
+
 	    while (this._mutation.length > 0) {
 		this._toFree = [];
 
@@ -159,13 +172,13 @@ class World {
 		this._mutation = [];
 		for (let priv of this._toFree) {
 		    // Free object. May cause new refcount changes.
-		    // TODO: Once we have a list of objects somehow, that will need to be protected
-		    // with a lock.
 		    // TODO: It is currently guaranteed that we are the only thread accessing this
 		    // object, but once GC is implemented, GC might catch it on another thread and
 		    // then that must be protected against.
-		    priv._free();
 		    objectsFreed += 1;
+		    debuglog("freeing object ID " + priv._getId() + " with object @ " + priv._ptr._base);
+		    idsToFree.push(priv._getId());
+		    priv._free();
 		}
 
 		// ...and continue recording the mutations caused by freeing objects, if needed.
@@ -176,11 +189,74 @@ class World {
 		this._header.set32(
 		    HEADER.OBJECT_COUNT,
 		    this._header.get32(HEADER.OBJECT_COUNT) - objectsFreed);
+
+		for (let id of idsToFree) {
+		    this._objectIdToFreelist(id);
+		}
+
+		if (EXTENDED_SANITY_CHECKS) {
+		    this._sanityCheckLocked();
+		}
 	    });
 
 	    this._toFree = null;
 	    this._mutation = null;
 	}
+    }
+
+    _objectIdFromFreelist() {
+	let head = this._header.get32(HEADER.FREELIST);
+	if (head === 0) {
+	    // Freelist is empty, cannot allocate an object ID from there. 0 is a valid ID so we
+	    // cannot use that as the "not found" marker.
+	    return -1;
+	}
+
+	if ((head & 1) !== 1) {
+	    throw new Error("impossible");  // Should have had the "freelist member" bit set
+	}
+
+	let objlist = this._arena.fromAddr(this._header.get32(HEADER.OBJLIST));
+	this._header.set32(HEADER.FREELIST, objlist.get32(head >> 1));
+	return head >> 1;
+    }
+
+    _objectIdToFreelist(id) {
+	let objlist = this._arena.fromAddr(this._header.get32(HEADER.OBJLIST));
+	let oldHead = this._header.get32(HEADER.FREELIST);
+	objlist.set32(id, oldHead);
+	this._header.set32(HEADER.FREELIST, (id << 1) | 1);
+    }
+
+    _allocateObjectId() {
+	let fromFreelist = this._objectIdFromFreelist();
+	if (fromFreelist !== -1) {
+	    return fromFreelist;
+	}
+
+	let cap = this._header.get32(HEADER.OBJLIST_CAPACITY);
+	let size = this._header.get32(HEADER.OBJLIST_SIZE);
+	let objlist = this._arena.fromAddr(this._header.get32(HEADER.OBJLIST));
+
+	if (size === cap) {
+	    let newCap = cap + OBJLIST_INCREMENT;
+	    let newObjlist = this._arena.alloc(newCap * 4);
+	    debuglog("allocated new objlist of size " + newCap + " @ " + newObjlist._base);
+	    if (cap !== 0) {
+		for (let i = 0; i < size; i++) {
+		    newObjlist.set32(i, objlist.get32(i));
+		}
+
+		this._arena.free(objlist);
+	    }
+
+	    this._header.set32(HEADER.OBJLIST, newObjlist._base);
+	    this._header.set32(HEADER.OBJLIST_CAPACITY, newCap);
+	    objlist = newObjlist;
+	}
+
+	this._header.set32(HEADER.OBJLIST_SIZE, size + 1);
+	return size;
     }
 
     _createObject(resultClass, ...args) {
@@ -211,13 +287,26 @@ class World {
 	    this._header.set32(
 		HEADER.OBJECT_COUNT,
 		this._header.get32(HEADER.OBJECT_COUNT) + 1);
+
+	    let id = this._allocateObjectId();
+	    let objlist = this._arena.fromAddr(this._header.get32(HEADER.OBJLIST));
+
+	    // Releasing a lock is effectively a fence, so we don't need to put a fence between
+	    // these two statement to make sure that by the time the new object is linked into the
+	    // object list, its ID is recorded
+	    priv._setId(id);
+	    objlist.set32(id, ptr._base);
+	    debuglog("assigned object ID " + id + " to object @ " + ptr._base);
+
+	    if (EXTENDED_SANITY_CHECKS) {
+		this._sanityCheckLocked();
+	    }
 	});
 
 	return pub;
     }
 
     _dispose(priv) {
-	// TODO: protect this with a lock once we have one
 	this._addrToObject.delete(priv._ptr._base);
 
 	this._withMutation(() => {
@@ -246,7 +335,7 @@ class World {
 	}
 
 	let ptr = this._arena.fromAddr(addr);
-	let type = ptr.get32(1);
+	let type = localobject.LocalObject._getType(ptr.get32(1));
 	if (type <= 0 || type >= ObjectTypes.length) {
 	    throw new Error("invalid object type in shared buffer: " + type);
 	}
@@ -305,6 +394,45 @@ class World {
 
 	    this._toFree.push(priv);
 	});
+    }
+
+    _sanityCheckLocked() {
+	let headerObjectCount = this._header.get32(HEADER.OBJECT_COUNT);
+	let objlist = this._arena.fromAddr(this._header.get32(HEADER.OBJLIST));
+	let objlistObjectCount = 0;
+	let objlistFreelistCount = 0;
+
+	for (let i = 0; i < this._header.get32(HEADER.OBJLIST_SIZE); i++) {
+	    let entry = objlist.get32(i);
+	    debuglog("objlist entry " + i + ": " + entry);
+	    if (entry === 0) {
+		// End of freelist marker. This counts as a freelist entry because if we ever
+		// set an entry to zero, we have already freed at least one object
+		objlistFreelistCount += 1;
+	    } else if ((entry & 1) === 1) {
+		objlistFreelistCount += 1;
+	    } else {
+		objlistObjectCount += 1;
+	    }
+	}
+
+	if (objlistObjectCount !== headerObjectCount) {
+	    throw new Error("object count in header/objlist is " +
+			    headerObjectCount + "/" + objlistObjectCount);
+	}
+
+	let freelistLength = 0;
+	let free = this._header.get32(HEADER.FREELIST);
+	debuglog("freelist head: " + (free >> 1));
+	while (free !== 0) {
+	    freelistLength += 1;
+	    free = objlist.get32(free >> 1);
+	}
+
+	if (objlistFreelistCount !== freelistLength) {
+	    throw new Error("freelist length in chain/objlist is " +
+			    freelistLength + "/" + objlistFreelistCount);
+	}
     }
 }
 

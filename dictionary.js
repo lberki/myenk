@@ -122,7 +122,7 @@ class Dictionary extends localobject.LocalObject {
     _init() {
 	super._init();
 
-	this._ptr.set32(1, BUFFER_TYPE);
+	this._setType(BUFFER_TYPE);
 
 	// No fields at the beginning
 	this._ptr.set32(0, 0);
