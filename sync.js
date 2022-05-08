@@ -17,8 +17,8 @@ class LockHandle {
 	Object.freeze(this);  // We can't serialize arbitrary changes (Dictionary is for that)
     }
 
-    lock() {
-	this[PRIVATE]._lock();
+    lock(timeout) {
+	this[PRIVATE]._lock(timeout);
     }
 
     unlock() {
@@ -51,8 +51,8 @@ class Lock extends localobject.LocalObject {
 	return [lock, new LockHandle(lock)];
     }
 
-    _lock() {
-	sync_internal.acquireLock(this._int32, this._addr);
+    _lock(timeout) {
+	sync_internal.acquireLock(this._int32, this._addr, timeout);
     }
 
 
@@ -71,8 +71,8 @@ class LatchHandle {
 	this[PRIVATE]._dec();
     }
 
-    wait() {
-	this[PRIVATE]._wait();
+    wait(timeout) {
+	this[PRIVATE]._wait(timeout);
     }
 }
 
@@ -119,7 +119,11 @@ class Latch extends localobject.LocalObject {
 	}
     }
 
-    _wait() {
+    _wait(timeout) {
+	if (timeout === undefined) {
+	    timeout = sync_internal.DEFAULT_TIMEOUT;
+	}
+
 	while (true) {
 	    let old = Atomics.load(this._int32, this._addr);
 	    if (old === 0) {
@@ -127,7 +131,7 @@ class Latch extends localobject.LocalObject {
 		return;
 	    }
 
-	    let result = Atomics.wait(this._int32, this._addr, old, 2000);
+	    let result = Atomics.wait(this._int32, this._addr, old, timeout);
 	    if (result === "ok") {
 		// Nothing happened between the load() and the wait() and the latch eventually
 		// reached zero

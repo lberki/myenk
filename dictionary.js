@@ -3,8 +3,6 @@
 // TODO:
 // - Add a test for GC keeping alive objects only referenced from other threads
 
-// - Add timeout to lock/latch and make it somehow configurable for tests
-
 // - Figure out why the latch test case is slow (150ms per iteration!)
 // - Implement symbols as keys
 // - Implement more JS data types (mainly Array)
