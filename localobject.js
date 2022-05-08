@@ -13,7 +13,7 @@ let MAX_OBJECT_TYPE = (1 << OBJECT_TYPE_BITS) - 1;
 // - Value (specific to object type)
 // - Object type | (id << OBJECT_TYPE_BITS)
 // - Object lock
-// - Reference count (both in object graph and from threads)
+// - Reference count (both in object graph and from threads), lowest bit: GC mark
 
 class LocalObject {
     constructor(_world, _arena, _ptr) {
@@ -61,7 +61,11 @@ class LocalObject {
     }
 
     _free() {
-	// Overridden by subclasses
+	// Overridden by subclasses. Frees all memory allocated by the object except the header.
+    }
+
+    *_references() {
+	// Overridden by subclasses. Yields the addresses of objects directly referenced.
     }
 }
 

@@ -149,7 +149,7 @@ class Dictionary extends localobject.LocalObject {
     }
 
     _free() {
-	// Walk the property linked list and free each cell (and later, contents)
+	// Walk the property linked list and free each cell and its contents
 	let cell = this._ptr.get32(0);
 	while (cell !== 0) {
 	    let cellPtr = this._arena.fromAddr(cell);
@@ -158,6 +158,19 @@ class Dictionary extends localobject.LocalObject {
 	}
 
 	super._free();
+    }
+
+    *_references() {
+	let cell = this._ptr.get32(0);
+	while (cell !== 0) {
+	    let cellPtr = this._arena.fromAddr(cell);
+	    let type = cellPtr.get32(2);
+	    if (type === ValueType.OBJECT) {
+		yield cellPtr.get32(3);
+	    }
+
+	    cell = cellPtr.get32(0);
+	}
     }
 
     _findProperty(bytes) {

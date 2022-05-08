@@ -29,8 +29,8 @@ const OBJECT_SIZE = 16;
 const MAGIC = 0x1083041d;
 const EXTENDED_SANITY_CHECKS = true;
 
-const THREAD_RC_DELTA = 1000;    // Change in refcount for references from threads
-const WORLD_RC_DELTA = 1;        // Change in refcount for references from within the world
+const THREAD_RC_DELTA = 2000;    // Change in refcount for references from threads
+const WORLD_RC_DELTA = 2;        // Change in refcount for references from within the world
 
 const OBJLIST_INCREMENT = 4;     // Small enough to get triggered in test cases
 
@@ -138,6 +138,23 @@ class World {
 
     createLock(...args) {
 	return this._createObject(sync.Lock, ...args);
+    }
+
+    // Start a mutation that is then ignored. This is used during garbage collection when freeing
+    // objects. Those are already proven not to be accessible, so there is no point in
+    // meticulously keeping track of refcounts of objects only accessible from them.
+    _withIgnoredMutation(l) {
+	if (this._mutation !== null) {
+	    throw new Error("impossible");
+	}
+
+	// TODO: We could special-case this so that the mutations are not even collected
+	this._mutation = [];
+	try {
+	    return l();
+	} finally {
+	    this._mutation = null;
+	}
     }
 
     // Run a mutation of the object graph.
@@ -329,27 +346,32 @@ class World {
 	this._addrToObject.set(addr, wr);
     }
 
-    _localFromAddr(addr, forGc=false) {
-	let wr = this._addrToObject.get(addr);
-	if (wr !== undefined) {
-	    // Do not call deref() twice in case GC happens in between
-	    let existing = wr.deref();
-	    if (existing !== undefined) {
-		return existing;
-	    }
-	}
-
+    _createLocalObjects(addr) {
 	let ptr = this._arena.fromAddr(addr);
 	let type = localobject.LocalObject._getType(ptr.get32(1));
 	if (type <= 0 || type >= ObjectTypes.length) {
 	    throw new Error("invalid object type in shared buffer: " + type);
 	}
 
-	let [priv, pub] = ObjectTypes[type]._create(this, this._arena, ptr);
+	return ObjectTypes[type]._create(this, this._arena, ptr);
+    }
+
+    _localFromAddr(addr, forGc=false) {
+	let wr = this._addrToObject.get(addr);
+	if (wr !== undefined) {
+	    // Do not call deref() twice in case Javascript GC happens in between
+	    let existing = wr.deref();
+	    if (existing !== undefined) {
+		return existing;
+	    }
+	}
+
+	let [priv, pub] = this._createLocalObjects(addr);
 	if (!forGc) {
-	    this._changeRefcount(ptr, THREAD_RC_DELTA);
+	    this._changeRefcount(priv._ptr, THREAD_RC_DELTA);
 	    this._registerObject(priv, pub, addr);
 	}
+
 	return pub;
     }
 
@@ -399,6 +421,96 @@ class World {
 
 	    this._toFree.push(priv);
 	});
+    }
+
+    _gcLocked() {
+	// GC is the only time when a thread holds more than one lock (the world lock + a single
+	// object lock)
+
+	// Collect all the GC roots (objects referenced from other threads)
+	let objlist = this._arena.fromAddr(this._header.get32(HEADER.OBJLIST));
+	let roots = [];
+
+	for (let i = 0; i < this._header.get32(HEADER.OBJLIST_SIZE); i++) {
+	    let addr = objlist.get32(i);
+	    if ((addr & 1) == 1) {
+		// This is a freelist entry
+		continue;
+	    }
+
+	    let [obj, _] = this._createLocalObjects(addr);
+	    obj._cs.run(() => {
+		if (obj._ptr.get32(3) >= THREAD_RC_DELTA) {
+		    roots.push(obj);
+		}
+	    });
+	}
+
+	// Mark every object transitively reachable from GC roots
+	let queue = [];
+	queue.push(...roots);
+
+	while (queue.length > 0) {
+	    let obj = queue.shift();
+	    obj._cs.run(() => {
+		let old = obj._ptr.get32(3);
+		if ((old & 1) === 1) {
+		    // Already visited
+		    return;
+		}
+
+		if (old === 0) {
+		    // Slated for freeing, which means that nothing is reachable from this object
+		    return;
+		}
+
+		// Mark as reachable, enqueue objects referenced
+		obj._ptr.set32(3, old | 1);
+		for (let addr of obj._references()) {
+		    // TODO: it's probably quite wasteful to always create a new local object even
+		    // though it's already been visited
+		    [priv, _] = this._createLocalObjects(addr);
+		    queue.push(priv);
+		}
+	    });
+	}
+
+	// Iterate over every object and free those without the GC mark
+	let objectsFreed = 0;
+	for (let i = 0; i < this._header.get32(HEADER.OBJLIST_SIZE); i++) {
+	    let addr = objlist.get32(i);
+	    if ((addr & 1) == 1) {
+		// This is a freelist entry
+		continue;
+	    }
+
+	    [obj, _] = this._createLocalObjects(addr);
+	    obj._cs.run(() => {
+		let rc = obj._ptr.get32(3);
+		if (rc === 0) {
+		    // Will be freed by someone else.
+		    return;
+		}
+
+		if ((rc & 1) === 1) {
+		    // Marked as reachable. Remove mark and continue
+		    obj._ptr.set32(3, rc & ~1);
+		    return;
+		}
+
+		// Can be GCd. Free all data structures, unlink from object ID list.
+		this._withIgnoredMutation(() => {
+		    obj._free();
+		});
+
+		this._objectIdToFreelist(obj._getId());
+		this._arena.free(obj._ptr);
+	    });
+	}
+
+	this._header.set32(
+	    HEADER.OBJECT_COUNT,
+	    this._header.get32(HEADER.OBJECT_COUNT) - objectsFreed);
     }
 
     _sanityCheckLocked() {
