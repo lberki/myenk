@@ -1,14 +1,13 @@
 "use strict";
 
 // TODO:
+// - Add a test for GC keeping alive objects only referenced from other threads
 // - Add a stress test that involves a lot of allocating / deallocating objects
 
 // - Add timeout to lock/latch and make it somehow configurable for tests
 
 // - Figure out why the latch test case is slow (150ms per iteration!)
 // - Implement symbols as keys
-// - Implement GC (and a linked list of every known object)
-//   - Test the complicated WeakRef() system
 // - Implement more JS data types (mainly Array)
 
 // KNOWLEDGE BASE:

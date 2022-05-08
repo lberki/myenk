@@ -22,16 +22,15 @@ let sync = require("./sync.js");
 let sync_internal = require("./sync_internal.js");
 
 
+const EXTENDED_SANITY_CHECKS = true;
+
 const PRIVATE = Symbol("World private data");
 
 const HEADER_SIZE = 32;
 const OBJECT_SIZE = 16;
 const MAGIC = 0x1083041d;
-const EXTENDED_SANITY_CHECKS = true;
-
 const THREAD_RC_DELTA = 2000;    // Change in refcount for references from threads
 const WORLD_RC_DELTA = 2;        // Change in refcount for references from within the world
-
 const OBJLIST_INCREMENT = 4;     // Small enough to get triggered in test cases
 
 const ObjectTypes = [
@@ -67,6 +66,7 @@ class World {
 	    this._arena.int32,
 	    (header._base + arena.BLOCK_HEADER_SIZE) / 4 + 3);
 	this.sanityCheck = this._criticalSection.wrap(this, this._sanityCheckLocked);
+	this.gc = this._criticalSection.wrap(this, this._gcLocked);
     }
 
     static create(size) {
@@ -431,6 +431,8 @@ class World {
 	let objlist = this._arena.fromAddr(this._header.get32(HEADER.OBJLIST));
 	let roots = [];
 
+	debuglog("starting GC");
+
 	for (let i = 0; i < this._header.get32(HEADER.OBJLIST_SIZE); i++) {
 	    let addr = objlist.get32(i);
 	    if ((addr & 1) == 1) {
@@ -439,9 +441,10 @@ class World {
 	    }
 
 	    let [obj, _] = this._createLocalObjects(addr);
-	    obj._cs.run(() => {
+	    obj._criticalSection.run(() => {
 		if (obj._ptr.get32(3) >= THREAD_RC_DELTA) {
 		    roots.push(obj);
+		    debuglog("found root @ " + addr);
 		}
 	    });
 	}
@@ -452,7 +455,7 @@ class World {
 
 	while (queue.length > 0) {
 	    let obj = queue.shift();
-	    obj._cs.run(() => {
+	    obj._criticalSection.run(() => {
 		let old = obj._ptr.get32(3);
 		if ((old & 1) === 1) {
 		    // Already visited
@@ -466,10 +469,12 @@ class World {
 
 		// Mark as reachable, enqueue objects referenced
 		obj._ptr.set32(3, old | 1);
+		debuglog("marking object @ " + obj._ptr._base + " as live");
 		for (let addr of obj._references()) {
 		    // TODO: it's probably quite wasteful to always create a new local object even
 		    // though it's already been visited
-		    [priv, _] = this._createLocalObjects(addr);
+		    let [priv, _] = this._createLocalObjects(addr);
+		    debuglog("enqueuing edge @ " + obj._ptr._base + " -> @ " + addr);
 		    queue.push(priv);
 		}
 	    });
@@ -484,8 +489,8 @@ class World {
 		continue;
 	    }
 
-	    [obj, _] = this._createLocalObjects(addr);
-	    obj._cs.run(() => {
+	    let [obj, _] = this._createLocalObjects(addr);
+	    obj._criticalSection.run(() => {
 		let rc = obj._ptr.get32(3);
 		if (rc === 0) {
 		    // Will be freed by someone else.
@@ -493,24 +498,33 @@ class World {
 		}
 
 		if ((rc & 1) === 1) {
+		    debuglog("object @ " + obj._ptr._base + " is live");
 		    // Marked as reachable. Remove mark and continue
+		    // TODO: we could avoid removing the mark if we flipped the meaning of the mark
+		    // bit on every GC cycle
 		    obj._ptr.set32(3, rc & ~1);
 		    return;
 		}
 
 		// Can be GCd. Free all data structures, unlink from object ID list.
+		debuglog("object @ " + obj._ptr._base + " is unreachable, freeing");
 		this._withIgnoredMutation(() => {
 		    obj._free();
 		});
 
 		this._objectIdToFreelist(obj._getId());
 		this._arena.free(obj._ptr);
+		objectsFreed += 1;
 	    });
 	}
 
 	this._header.set32(
 	    HEADER.OBJECT_COUNT,
 	    this._header.get32(HEADER.OBJECT_COUNT) - objectsFreed);
+
+	if (EXTENDED_SANITY_CHECKS) {
+	    this._sanityCheckLocked();
+	}
     }
 
     _sanityCheckLocked() {
@@ -521,7 +535,6 @@ class World {
 
 	for (let i = 0; i < this._header.get32(HEADER.OBJLIST_SIZE); i++) {
 	    let entry = objlist.get32(i);
-	    debuglog("objlist entry " + i + ": " + entry);
 	    if (entry === 0) {
 		// End of freelist marker. This counts as a freelist entry because if we ever
 		// set an entry to zero, we have already freed at least one object
@@ -540,7 +553,6 @@ class World {
 
 	let freelistLength = 0;
 	let free = this._header.get32(HEADER.FREELIST);
-	debuglog("freelist head: " + (free >> 1));
 	while (free !== 0) {
 	    freelistLength += 1;
 	    free = objlist.get32(free >> 1);

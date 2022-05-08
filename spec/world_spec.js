@@ -42,17 +42,36 @@ describe("world", () => {
 	expect(w1.objectCount()).toBe(0);
     });
 
-    // it("can clean up reference cycles", async () => {
-    // 	let w = world.World.create(1024);
-    // 	w.root().foo = w.createDictionary();
-    // 	w.root().bar = w.createDictionary();
-    // 	w.root().foo.bar = w.root().bar;
-    // 	w.root().bar.foo = w.root().foo;
+    it("can free reference cycles", async () => {
+	let w = world.World.create(1024);
+	w.root().foo = w.createDictionary();
+	w.root().bar = w.createDictionary();
+	w.root().foo.bar = w.root().bar;
+	w.root().bar.foo = w.root().foo;
 
-    // 	delete w.root().foo;
-    // 	delete w.root().bar;
+	delete w.root().foo;
+	delete w.root().bar;
 
-    // 	await testutil.forceGc();
-    // 	expect(w.objectCount()).toBe(0);
-    // });
+	await testutil.forceGc();
+	expect(w.objectCount()).toBe(2);  // Cycle is not freed on JS GC
+
+	w.gc();
+	w.sanityCheck();
+	expect(w.objectCount()).toBe(0);
+    });
+
+    it("can keep objects live", () => {
+	let w = world.World.create(1024);
+	w.root().foo = w.createDictionary();
+	w.root().bar = w.createDictionary();
+
+	w.gc();
+	w.sanityCheck();
+	expect(w.objectCount()).toBe(2);
+
+	// Run another GC cycle, just in case
+	w.gc();
+	w.sanityCheck();
+	expect(w.objectCount()).toBe(2);
+    });
 });
