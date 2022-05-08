@@ -2,7 +2,6 @@
 
 // TODO:
 // - Add a test for GC keeping alive objects only referenced from other threads
-// - Add a stress test that involves a lot of allocating / deallocating objects
 
 // - Add timeout to lock/latch and make it somehow configurable for tests
 

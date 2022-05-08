@@ -222,4 +222,24 @@ describe("arena", () => {
 	expect(w._arena.left()).toBe(before);
 	w._arena.sanityCheck();
     });
+
+    it("single-threaded allocation stress test", () => {
+	let cut = arena.Arena.create(65536);
+	let blocks = [];
+	let rng = new testutil.PRNG(1);
+
+	for (let i = 0; i < 1000; i++) {
+	    // Try to keep the number of blocks allocated around 100, but at most 200
+	    let r = rng.upto(200);
+	    if (r < blocks.length) {
+		let block = blocks.splice(rng.upto(blocks.length), 1);
+		cut.free(block);
+	    } else {
+		let block = cut.alloc(rng.upto(128) + 8);
+		blocks.push(block);
+	    }
+	}
+
+	cut.sanityCheck();
+    });
 });
