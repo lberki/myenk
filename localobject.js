@@ -61,7 +61,7 @@ class LocalObject {
     }
 
     _free() {
-	this._arena.free(this._ptr);
+	// Overridden by subclasses
     }
 }
 

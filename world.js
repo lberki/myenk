@@ -157,7 +157,7 @@ class World {
 	    return l();
 	} finally {
 	    let objectsFreed = 0;
-	    let idsToFree = [];
+	    let objectsToFree = [];
 
 	    while (this._mutation.length > 0) {
 		this._toFree = [];
@@ -177,7 +177,11 @@ class World {
 		    // then that must be protected against.
 		    objectsFreed += 1;
 		    debuglog("freeing object ID " + priv._getId() + " with object @ " + priv._ptr._base);
-		    idsToFree.push(priv._getId());
+		    objectsToFree.push({ "id": priv._getId(), "ptr": priv._ptr});
+
+		    // This does not free the object header. This is so that pointer in the global
+		    // object list stays valid. It will be freed when we deallocate the object IDs
+		    // later.
 		    priv._free();
 		}
 
@@ -190,8 +194,9 @@ class World {
 		    HEADER.OBJECT_COUNT,
 		    this._header.get32(HEADER.OBJECT_COUNT) - objectsFreed);
 
-		for (let id of idsToFree) {
-		    this._objectIdToFreelist(id);
+		for (let obj of objectsToFree) {
+		    this._objectIdToFreelist(obj.id);
+		    this._arena.free(obj.ptr);
 		}
 
 		if (EXTENDED_SANITY_CHECKS) {
