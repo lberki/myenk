@@ -13,7 +13,7 @@
 // - Symbol-to-sequence id bimap for Symbols
 
 const util = require("util");
-const debuglog = util.debuglog("object");
+const debuglog = util.debuglog("dictionary");
 
 let localobject = require("./localobject.js");
 

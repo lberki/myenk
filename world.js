@@ -18,6 +18,7 @@ const debuglog = util.debuglog("world");
 let arena = require("./arena.js");
 let localobject = require("./localobject.js");
 let dictionary = require("./dictionary.js");
+let array = require("./array.js");
 let sync = require("./sync.js");
 let sync_internal = require("./sync_internal.js");
 
@@ -36,6 +37,7 @@ const OBJLIST_INCREMENT = 4;     // Small enough to get triggered in test cases
 const ObjectTypes = [
     null,  // marker so that zero is not a valid object type in RAM,
     dictionary.Dictionary,
+    array.Array,
     sync.Latch,
     sync.Lock
 ];
@@ -130,6 +132,10 @@ class World {
 
     createDictionary(...args) {
 	return this._createObject(dictionary.Dictionary, ...args);
+    }
+
+    createArray(...args) {
+	return this._createObject(array.Array, ...args);
     }
 
     createLatch(...args) {
