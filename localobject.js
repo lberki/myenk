@@ -9,6 +9,17 @@ let sync_internal = require("./sync_internal.js");
 let OBJECT_TYPE_BITS = 4;
 let MAX_OBJECT_TYPE = (1 << OBJECT_TYPE_BITS) - 1;
 
+const ValueType = {
+    INTEGER: 1,
+    OBJECT: 2,
+    STRING: 3,
+}
+
+let PRIVATE = null;
+
+let ENCODER = new TextEncoder();
+let DECODER = new TextDecoder();
+
 // Representation:
 // - Value (specific to object type)
 // - Object type | (id << OBJECT_TYPE_BITS)
@@ -60,6 +71,73 @@ class LocalObject {
 	return this._ptr.get32(1) >> OBJECT_TYPE_BITS;
     }
 
+    _freeValue(type, bytes) {
+	if (type === ValueType.OBJECT) {
+	    this._world._delWorldRef(this._arena.fromAddr(bytes));
+	} else if (type === ValueType.STRING) {
+	    if (bytes !== 0) {
+		this._arena.free(this._arena.fromAddr(bytes));
+	    }
+	}
+    }
+
+    _valueFromBytes(type, bytes) {
+	if (type === ValueType.INTEGER) {
+	    return bytes;
+	} else if (type == ValueType.OBJECT) {
+	    return this._world._localFromAddr(bytes);
+	} else if (type == ValueType.STRING) {
+	    if (bytes === 0) {
+		return "";
+	    } else {
+		let valuePtr = this._arena.fromAddr(bytes);
+		return DECODER.decode(valuePtr.asUint8());
+	    }
+	} else {
+	    throw new Error("not implemented");
+	}
+    }
+
+    _valueToBytes(value) {
+	let type = -1, bytes = -1;
+	if (value[PRIVATE] !== undefined) {
+	    // An object under our control (maybe in a different world!)
+	    if (value[PRIVATE]._world !== this._world) {
+		throw new Error("not supported");
+	    }
+
+	    type = ValueType.OBJECT;
+	    bytes = value[PRIVATE]._ptr._base;
+	    this._world._addWorldRef(value[PRIVATE]._ptr);
+	} else if (typeof(value) === "number" && value >= 0 && value < 100*1000*1000) {
+	    // TODO: support every 32-bit number
+	    type = ValueType.INTEGER;
+	    bytes = value;
+	} else if (typeof(value) === "string") {
+	    type = ValueType.STRING;
+
+	    let stringBytes = ENCODER.encode(value);
+	    if (value === "") {
+		bytes = 0;
+	    } else {
+		let valuePtr = this._arena.alloc(stringBytes.length);
+		valuePtr.asUint8().set(stringBytes);
+		bytes = valuePtr._base;
+	    }
+	} else {
+	    console.log(value);
+	    throw new Error("not implemented");
+	}
+
+	return [type, bytes];
+    }
+
+    *_valueReferences(type, bytes) {
+	if (type === ValueType.OBJECT) {
+	    yield bytes;
+	}
+    }
+
     _free() {
 	// Overridden by subclasses. Frees all memory allocated by the object except the header.
     }
@@ -69,5 +147,11 @@ class LocalObject {
     }
 }
 
+function setPrivateSymbol(p) {
+    PRIVATE = p;
+}
+
+// TODO: this is for use by World, should probably be a little more private
+exports.setPrivateSymbol = setPrivateSymbol;
 exports.LocalObject = LocalObject;
 exports.MAX_OBJECT_TYPE = 0xf;

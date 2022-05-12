@@ -571,4 +571,5 @@ class World {
     }
 }
 
+localobject.setPrivateSymbol(PRIVATE);
 exports.World = World;

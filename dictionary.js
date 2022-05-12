@@ -24,12 +24,6 @@ let BUFFER_TYPE = null;
 let ENCODER = new TextEncoder();
 let DECODER = new TextDecoder();
 
-const ValueType = {
-    INTEGER: 1,
-    OBJECT: 2,
-    STRING: 3,
-}
-
 function handlerApply(target, thisArg, args) {
     throw new Error("impossible");
 }
@@ -124,21 +118,8 @@ class Dictionary extends localobject.LocalObject {
 	this._ptr.set32(0, 0);
     }
 
-    _freeValue(cellPtr) {
-	let type = cellPtr.get32(2);
-	let valueBytes = cellPtr.get32(3);
-
-	if (type === ValueType.OBJECT) {
-	    this._world._delWorldRef(this._arena.fromAddr(valueBytes));
-	} else if (type === ValueType.STRING) {
-	    if (valueBytes !== 0) {
-		this._arena.free(this._arena.fromAddr(valueBytes));
-	    }
-	}
-    }
-
     _freeCell(cellPtr) {
-	this._freeValue(cellPtr);
+	this._freeValue(cellPtr.get32(2), cellPtr.get32(3));
 
 	this._arena.free(this._arena.fromAddr(cellPtr.get32(1)));  // Free key
 	this._arena.free(cellPtr);  // Free cell
@@ -160,11 +141,7 @@ class Dictionary extends localobject.LocalObject {
 	let cell = this._ptr.get32(0);
 	while (cell !== 0) {
 	    let cellPtr = this._arena.fromAddr(cell);
-	    let type = cellPtr.get32(2);
-	    if (type === ValueType.OBJECT) {
-		yield cellPtr.get32(3);
-	    }
-
+	    yield* this._valueReferences(cellPtr.get32(2), cellPtr.get32(3));
 	    cell = cellPtr.get32(0);
 	}
     }
@@ -226,23 +203,7 @@ class Dictionary extends localobject.LocalObject {
 	    return undefined;
 	}
 
-	let bufferType = cellPtr.get32(2);
-	let bufferValue = cellPtr.get32(3);
-
-	if (bufferType === ValueType.INTEGER) {
-	    return bufferValue;
-	} else if (bufferType == ValueType.OBJECT) {
-	    return this._world._localFromAddr(bufferValue);
-	} else if (bufferType == ValueType.STRING) {
-	    if (bufferValue === 0) {
-		return "";
-	    } else {
-		let valuePtr = this._arena.fromAddr(bufferValue);
-		return DECODER.decode(valuePtr.asUint8());
-	    }
-	} else {
-	    throw new Error("not implemented");
-	}
+	return this._valueFromBytes(cellPtr.get32(2), cellPtr.get32(3));
     }
 
     _set(property, value) {
@@ -258,35 +219,7 @@ class Dictionary extends localobject.LocalObject {
 	    throw new Error("not implemented");
 	}
 
-	let bufferType = -1, bufferValue = -1;
-	if (value[PRIVATE] !== undefined) {
-	    // An object under our control (maybe in a different world!)
-	    if (value[PRIVATE]._world !== this._world) {
-		throw new Error("not supported");
-	    }
-
-	    bufferType = ValueType.OBJECT;
-	    bufferValue = value[PRIVATE]._ptr._base;
-	    this._world._addWorldRef(value[PRIVATE]._ptr);
-	} else if (typeof(value) === "number" && value >= 0 && value < 100*1000*1000) {
-	    // TODO: support every 32-bit number
-	    bufferType = ValueType.INTEGER;
-	    bufferValue = value;
-	} else if (typeof(value) === "string") {
-	    bufferType = ValueType.STRING;
-
-	    let valueBytes = ENCODER.encode(value);
-	    if (value === "") {
-		bufferValue = 0;
-	    } else {
-		let valuePtr = this._arena.alloc(valueBytes.length);
-		valuePtr.asUint8().set(valueBytes);
-		bufferValue = valuePtr._base;
-	    }
-	} else {
-	    console.log(value);
-	    throw new Error("not implemented");
-	}
+	let [bufferType, bufferValue] = this._valueToBytes(value);
 
 	let propBytes = ENCODER.encode(property);
 	let [_, cellPtr] = this._findProperty(propBytes);
@@ -301,7 +234,7 @@ class Dictionary extends localobject.LocalObject {
 	    cellPtr.set32(0, this._ptr.get32(0));
 	    this._ptr.set32(0, cellPtr._base);
 	} else {
-	    this._freeValue(cellPtr);
+	    this._freeValue(cellPtr.get32(2), cellPtr.get32(3));
 	}
 
 	cellPtr.set32(2, bufferType);
