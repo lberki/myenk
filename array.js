@@ -77,6 +77,10 @@ const handlers = {
     ownKeys: handlerOwnKeys
 };
 
+// Memory layout:
+// 32 bits: size
+// 32 bits: auxiliary array
+// rest: storage (8 bytes for each value)
 class Array extends localobject.LocalObject {
     constructor(world, arena, ptr) {
 	super(world, arena, ptr);
@@ -97,14 +101,76 @@ class Array extends localobject.LocalObject {
     _init() {
 	super._init();
 	this._setType(BUFFER_TYPE);
+
+	// No storage initially
+	this._ptr.set32(0, 0);
+    }
+
+    _realloc(capacity) {
+	let newPtr = this._arena.alloc(capacity * 8 + 8);
+	newPtr.set32(0, capacity);
+	let oldAddr = this._ptr.get32(0);
+	if (oldAddr !== 0) {
+	    let oldPtr = this._arena.fromAddr(oldAddr);
+	    for (let i = 1; i < oldPtr.size() / 4; i++) {
+		newPtr.set32(i, oldPtr.get32(i));
+	    }
+	} else {
+	    // Initialize auxiliary dictionary ptr to "nothing"
+	    newPtr.set32(1, 0);
+	}
+
+	this._ptr.set32(0, newPtr._base);
+	debuglog("reallocated to capacity " + capacity + " @ " + newPtr._base);
+	return newPtr;
     }
 
     _free() {
 	super._free();
     }
 
+    _getStore() {
+	let addr = this._ptr.get32(0);
+	if (addr === 0) {
+	    return null;
+	} else {
+	    return this._arena.fromAddr(addr);
+	}
+    }
+
+    _getCapacity(storePtr) {
+	return (storePtr.size() - 8) / 8;
+    }
+
+    _getSize(storePtr) {
+	return storePtr.get32(0);
+    }
+
     _impl_at(i) {
-	throw new Error("at() not implemented");
+	let idx;
+	if (typeof(i) === "number") {
+	    idx = i;
+	} else {
+	    idx = parseInt(i);
+	}
+
+	if (isNaN(idx) || idx <= 0) {
+	    return undefined;  // Apparently that's what happens for weird indices
+	}
+
+	let storePtr = this._getStore();
+	if (storePtr === null) {
+	    return undefined;  // Spec says so
+	}
+
+	if (idx >= this._getSize(storePtr)) {
+	    return undefined;
+	}
+
+	let type = storePtr.get32(2 + 2 * idx);
+	let bytes = storePtr.get32(3 + 2 * idx);
+
+	return this._valueFromBytes(type, bytes);
     }
 
     _impl_push(...args) {
@@ -144,12 +210,15 @@ class Array extends localobject.LocalObject {
 	if (!isNaN(idx)) {
 	    // We have successfully converted an integer to string and back again, but let's at
 	    // least conform to the spec, if hilariously slowly
-	    console.log(idx);
 	    return this._impl_at(idx);
 	}
 
-	if (idx === "length") {
-	    throw new Error("length not implemented");
+	if (property === "length") {
+	    if (this._ptr.get32(0) === 0) {
+		return 0;
+	    } else {
+		throw new Error("length not implemented");
+	    }
 	}
 
 	let implName = "_impl_" + property;
@@ -162,13 +231,24 @@ class Array extends localobject.LocalObject {
 
     _set(property, value) {
 	let idx = parseInt(property);
-	if (idx !== NaN) {
-	    // Set numeric index.
+	if (isNaN(idx) || idx < 0) {
+	    // TODO: according to spec, we should be able to set arbitrary keys even though it requires
+	    // an auxiliary Dictionary instance.
+	    throw new Error("not implemented");
 	}
 
-	// TODO: according to spec, we should be able to set arbitrary keys even though it requires
-	// an auxiliary Dictionary instance.
-	throw new Error("not implemented");
+	// Set numeric index
+	let storePtr = this._getStore();
+	if (storePtr === null) {
+	    // No old store, allocate as much as we need
+	    storePtr = this._realloc(idx + 1);
+	}
+
+	let [type, bytes] = this._valueToBytes(value);
+	storePtr.set32(2 + 2 * idx, type);
+	storePtr.set32(3 + 2 * idx, bytes);
+
+	return true;
     }
 }
 
