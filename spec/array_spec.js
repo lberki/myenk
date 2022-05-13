@@ -57,4 +57,30 @@ describe("array", () => {
 	await testutil.forceGc();
 	expect(w.left()).toBe(before);
     });
+
+    it("supports simple object references", () => {
+	let w = world.World.create(1024);
+	let a = w.createArray();
+
+	let dict = w.createDictionary();
+	a[0] = dict;
+	// Don't use expect(a[0]) because Jasmine apparently expects a lot of things from
+	// objects passed to expect() we can't do yet
+	// TODO: change it once Dictionary is smart enough
+	expect(a[0] === dict).toBe(true);
+    });
+
+    it("keeps references to objects properly", async () => {
+	let w = world.World.create(1024);
+	let a = w.createArray();
+
+	a[0] = w.createDictionary();
+	await testutil.forceGc();
+	expect(w.objectCount()).toBe(2);
+	expect(a[0]).not.toBe(undefined);
+
+	a[0] = null;
+	await testutil.forceGc();
+	expect(w.objectCount()).toBe(1);
+    });
 });

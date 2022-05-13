@@ -185,7 +185,9 @@ class Array extends localobject.LocalObject {
 	let type = storePtr.get32(2 + 2 * idx);
 	let bytes = storePtr.get32(3 + 2 * idx);
 
-	return this._valueFromBytes(type, bytes);
+	return this._world._withMutation(() => {
+	    return this._valueFromBytes(type, bytes);
+	});
     }
 
     _impl_push(...args) {
@@ -260,9 +262,15 @@ class Array extends localobject.LocalObject {
 	    storePtr = this._realloc(idx + 1);
 	}
 
-	let [type, bytes] = this._valueToBytes(value);
-	storePtr.set32(2 + 2 * idx, type);
-	storePtr.set32(3 + 2 * idx, bytes);
+	this._world._withMutation(() => {
+	    let type = storePtr.get32(2 + 2 * idx);
+	    let bytes = storePtr.get32(3 + 2 * idx);
+	    this._freeValue(type, bytes);
+
+	    [type, bytes] = this._valueToBytes(value);
+	    storePtr.set32(2 + 2 * idx, type);
+	    storePtr.set32(3 + 2 * idx, bytes);
+	});
 
 	return true;
     }
