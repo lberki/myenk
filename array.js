@@ -214,10 +214,11 @@ class Array extends localobject.LocalObject {
 	}
 
 	if (property === "length") {
-	    if (this._ptr.get32(0) === 0) {
+	    let storePtr = this._getStore();
+	    if (storePtr === null) {
 		return 0;
 	    } else {
-		throw new Error("length not implemented");
+		return this._getSize(storePtr);
 	    }
 	}
 
