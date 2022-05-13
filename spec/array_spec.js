@@ -45,4 +45,16 @@ describe("array", () => {
 	a[1] = 42;
 	expect(a[0]).toBe(undefined);
     });
+
+    it("can deallocate backing store", async () => {
+	let w = world.World.create(1024);
+	let before = w.left();
+	let a = w.createArray();
+	a[32] = 0;
+	expect(w.left()).toBeLessThan(before);
+
+	a = null;
+	await testutil.forceGc();
+	expect(w.left()).toBe(before);
+    });
 });

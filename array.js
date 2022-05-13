@@ -136,6 +136,11 @@ class Array extends localobject.LocalObject {
     }
 
     _free() {
+	let storePtr = this._getStore();
+	if (storePtr !== null) {
+	    // TODO: free individual values
+	    this._arena.free(storePtr);
+	}
 	super._free();
     }
 
