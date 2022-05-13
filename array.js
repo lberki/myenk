@@ -107,17 +107,27 @@ class Array extends localobject.LocalObject {
     }
 
     _realloc(capacity) {
+	let oldAddr = this._ptr.get32(0);
+	let oldCapacity;
 	let newPtr = this._arena.alloc(capacity * 8 + 8);
 	newPtr.set32(0, capacity);
-	let oldAddr = this._ptr.get32(0);
+
 	if (oldAddr !== 0) {
 	    let oldPtr = this._arena.fromAddr(oldAddr);
+	    let oldCapacity = this._getCapacity(oldPtr);
 	    for (let i = 1; i < oldPtr.size() / 4; i++) {
 		newPtr.set32(i, oldPtr.get32(i));
 	    }
 	} else {
 	    // Initialize auxiliary dictionary ptr to "nothing"
 	    newPtr.set32(1, 0);
+	    oldCapacity = 0;
+	}
+
+	let [type, bytes] = this._valueToBytes(undefined);
+	for (let i = oldCapacity; i < capacity; i++) {
+	    newPtr.set32(2 + 2 * i, type);
+	    newPtr.set32(3 + 2 * i, bytes);
 	}
 
 	this._ptr.set32(0, newPtr._base);
@@ -154,7 +164,7 @@ class Array extends localobject.LocalObject {
 	    idx = parseInt(i);
 	}
 
-	if (isNaN(idx) || idx <= 0) {
+	if (isNaN(idx) || idx < 0) {
 	    return undefined;  // Apparently that's what happens for weird indices
 	}
 

@@ -31,4 +31,18 @@ describe("array", () => {
 	expect(a[-1]).toBe(undefined);
 	expect(a.at(-1)).toBe(undefined);
     });
+
+    it("supports null value", () => {
+	let w = world.World.create(1024);
+	let a = w.createArray();
+	w[0] = null;
+	expect(w[0]).toBe(null);
+    });
+
+    it("initializes elements to undefined", () => {
+	let w = world.World.create(1024);
+	let a = w.createArray();
+	a[1] = 42;
+	expect(a[0]).toBe(undefined);
+    });
 });

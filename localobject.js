@@ -10,9 +10,11 @@ let OBJECT_TYPE_BITS = 4;
 let MAX_OBJECT_TYPE = (1 << OBJECT_TYPE_BITS) - 1;
 
 const ValueType = {
-    INTEGER: 1,
-    OBJECT: 2,
-    STRING: 3,
+    UNDEFINED: 1,
+    NULL: 2,
+    INTEGER: 3,
+    OBJECT: 4,
+    STRING: 5,
 }
 
 let PRIVATE = null;
@@ -82,7 +84,11 @@ class LocalObject {
     }
 
     _valueFromBytes(type, bytes) {
-	if (type === ValueType.INTEGER) {
+	if (type === ValueType.UNDEFINED) {
+	    return undefined;
+	} else if (type === ValueType.NULL) {
+	    return null;
+	} else if (type === ValueType.INTEGER) {
 	    return bytes;
 	} else if (type == ValueType.OBJECT) {
 	    return this._world._localFromAddr(bytes);
@@ -100,7 +106,13 @@ class LocalObject {
 
     _valueToBytes(value) {
 	let type = -1, bytes = -1;
-	if (value[PRIVATE] !== undefined) {
+	if (value === undefined) {
+	    type = ValueType.UNDEFINED;
+	    bytes = 0;
+	} else if (value === null) {
+	    type = ValueType.NULL;
+	    bytes = 0;
+	} else if (value[PRIVATE] !== undefined) {
 	    // An object under our control (maybe in a different world!)
 	    if (value[PRIVATE]._world !== this._world) {
 		throw new Error("not supported");

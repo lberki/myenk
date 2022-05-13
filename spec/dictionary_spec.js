@@ -73,6 +73,16 @@ describe("dictionary", () => {
 	expect("foo" in obj).toBe(false);
     });
 
+    it("supports unique values", () => {
+	let w = world.World.create(1024);
+	let obj = w.createDictionary();
+	obj.foo = undefined;
+	obj.bar = null;
+
+	expect(obj.foo).toBe(undefined);
+	expect(obj.bar).toBe(null);
+    });
+
     it("supports string values", async () => {
 	let w = world.World.create(1024);
 	let obj = w.createDictionary();
