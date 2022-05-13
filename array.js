@@ -138,7 +138,13 @@ class Array extends localobject.LocalObject {
     _free() {
 	let storePtr = this._getStore();
 	if (storePtr !== null) {
-	    // TODO: free individual values
+	    for (let i = 0; i < this._getSize(storePtr); i++) {
+		let type = storePtr.get32(2 + 2 * i);
+		let bytes = storePtr.get32(3 + 2 * i);
+
+		this._freeValue(type, bytes);
+	    }
+
 	    this._arena.free(storePtr);
 	}
 	super._free();
@@ -223,6 +229,11 @@ class Array extends localobject.LocalObject {
     }
 
     _get(property) {
+	if (property === PRIVATE) {
+	    // This is for internal use (PRIVATE is hidden from everyone else)
+	    return this;
+	}
+
 	let idx = parseInt(property);
 	if (!isNaN(idx)) {
 	    // We have successfully converted an integer to string and back again, but let's at

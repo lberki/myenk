@@ -1,7 +1,7 @@
 "use strict";
 
 // TODO:
-// - Add a test for GC keeping alive objects only referenced from other threads
+// - Add critical section use to Array (and a stress test)
 
 // - Figure out why the latch test case is slow (150ms per iteration!)
 // - Implement symbols as keys

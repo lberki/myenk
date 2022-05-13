@@ -73,8 +73,8 @@ describe("array", () => {
     it("keeps references to objects properly", async () => {
 	let w = world.World.create(1024);
 	let a = w.createArray();
-
 	a[0] = w.createDictionary();
+
 	await testutil.forceGc();
 	expect(w.objectCount()).toBe(2);
 	expect(a[0]).not.toBe(undefined);
@@ -82,5 +82,18 @@ describe("array", () => {
 	a[0] = null;
 	await testutil.forceGc();
 	expect(w.objectCount()).toBe(1);
+    });
+
+    it("dereferences objects when freed", async () => {
+	let w = world.World.create(1024);
+	w.root().a = w.createArray();
+	w.root().a[1] = w.createDictionary();
+
+	await testutil.forceGc();
+	expect(w.objectCount()).toBe(2);
+
+	delete w.root().a;
+	await testutil.forceGc();
+	expect(w.objectCount()).toBe(0);
     });
 });
