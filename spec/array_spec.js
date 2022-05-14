@@ -114,4 +114,19 @@ describe("array", () => {
 	await testutil.forceGc();
 	expect(w.objectCount()).toBe(0);
     });
+
+    it("implements push()", () => {
+	let w = world.World.create(1024);
+	let a = w.createArray();
+
+	a.push("a");
+	expect(a.length).toBe(1);
+	expect(a[0]).toBe("a");
+
+	a.push("b", "c" ,"d");
+	expect(a.length).toBe(4);
+	expect(a[1]).toBe("b");
+	expect(a[2]).toBe("c");
+	expect(a[3]).toBe("d");
+    });
 });

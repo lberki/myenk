@@ -106,15 +106,32 @@ class Array extends localobject.LocalObject {
 	this._ptr.set32(0, 0);
     }
 
-    _realloc(capacity) {
+    _reallocMaybe(needed) {
 	let oldAddr = this._ptr.get32(0);
+	let oldPtr;
+	let newCapacity;
 	let oldCapacity;
-	let newPtr = this._arena.alloc(capacity * 8 + 8);
-	newPtr.set32(0, capacity);
 
 	if (oldAddr !== 0) {
-	    let oldPtr = this._arena.fromAddr(oldAddr);
-	    let oldCapacity = this._getCapacity(oldPtr);
+	    oldPtr = this._arena.fromAddr(oldAddr);
+	    oldCapacity = this._getCapacity(oldPtr);
+	    newCapacity = oldCapacity;
+	    while (newCapacity < needed) {
+		newCapacity = Math.ceil(newCapacity * 1.25) + 2;
+	    }
+	}  else {
+	    oldCapacity = 0;
+	    newCapacity = needed;
+	}
+
+	if (newCapacity === oldCapacity) {
+	    return oldPtr;
+	}
+
+	let newPtr = this._arena.alloc(newCapacity * 8 + 8);
+	newPtr.set32(0, newCapacity);
+
+	if (oldAddr !== 0) {
 	    for (let i = 1; i < oldPtr.size() / 4; i++) {
 		newPtr.set32(i, oldPtr.get32(i));
 	    }
@@ -122,17 +139,16 @@ class Array extends localobject.LocalObject {
 	} else {
 	    // Initialize auxiliary dictionary ptr to "nothing"
 	    newPtr.set32(1, 0);
-	    oldCapacity = 0;
 	}
 
 	let [type, bytes] = this._valueToBytes(undefined);
-	for (let i = oldCapacity; i < capacity; i++) {
+	for (let i = oldCapacity; i < newCapacity; i++) {
 	    newPtr.set32(2 + 2 * i, type);
 	    newPtr.set32(3 + 2 * i, bytes);
 	}
 
 	this._ptr.set32(0, newPtr._base);
-	debuglog("reallocated to capacity " + capacity + " @ " + newPtr._base);
+	debuglog("reallocated to capacity " + newCapacity + " @ " + newPtr._base);
 	return newPtr;
     }
 
@@ -198,7 +214,27 @@ class Array extends localobject.LocalObject {
     }
 
     _impl_push(...args) {
-	throw new Error("push() not implemented");
+	let oldSize;
+
+	let storePtr = this._getStore();
+	if (storePtr === null) {
+	    oldSize = 0;
+	} else {
+	    oldSize = this._getSize(storePtr);
+	}
+
+	let newSize = oldSize + args.length;
+	storePtr = this._reallocMaybe(newSize);
+
+	this._world._withMutation(() => {
+	    for (let i = 0; i < args.length; i++) {
+		let [type, bytes] = this._valueToBytes(args[i]);
+		storePtr.set32(2 + 2 * (oldSize + i), type);
+		storePtr.set32(3 + 2 * (oldSize + i), bytes);
+	    }
+	});
+
+	storePtr.set32(0, newSize);
     }
 
     _impl_pop() {
@@ -268,18 +304,7 @@ class Array extends localobject.LocalObject {
 	}
 
 	// Set numeric index
-	let storePtr = this._getStore();
-	if (storePtr === null) {
-	    // No old store, allocate as much as we need
-	    storePtr = this._realloc(idx + 1);
-	} else if (idx >= this._getCapacity(storePtr)) {
-	    let newCapacity = this._getCapacity(storePtr);
-	    while (idx >= newCapacity) {
-		newCapacity = Math.ceil(newCapacity * 1.25) + 2;
-	    }
-
-	    storePtr = this._realloc(newCapacity);
-	}
+	let storePtr = this._reallocMaybe(idx + 1);
 
 	this._world._withMutation(() => {
 	    let type = storePtr.get32(2 + 2 * idx);
