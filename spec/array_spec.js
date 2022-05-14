@@ -39,6 +39,7 @@ describe("array", () => {
 
 	for (let i = 0; i < 100; i++) {
 	    a[i] = i + 1;
+	    expect(a.length).toBe(i + 1);
 	}
 
 	for (let i = 0; i < 100; i++) {
@@ -53,8 +54,9 @@ describe("array", () => {
     it("supports null value", () => {
 	let w = world.World.create(1024);
 	let a = w.createArray();
-	w[0] = null;
-	expect(w[0]).toBe(null);
+	a[0] = null;
+	expect(a[0]).toBe(null);
+	expect(a.length).toBe(1);
     });
 
     it("initializes elements to undefined", () => {
@@ -62,6 +64,7 @@ describe("array", () => {
 	let a = w.createArray();
 	a[1] = 42;
 	expect(a[0]).toBe(undefined);
+	expect(a.length).toBe(2);
     });
 
     it("can deallocate backing store", async () => {
@@ -69,6 +72,7 @@ describe("array", () => {
 	let before = w.left();
 	let a = w.createArray();
 	a[32] = 0;
+	expect(a.length).toBe(33);
 	expect(w.left()).toBeLessThan(before);
 
 	a = null;

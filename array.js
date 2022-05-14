@@ -129,7 +129,6 @@ class Array extends localobject.LocalObject {
 	}
 
 	let newPtr = this._arena.alloc(newCapacity * 8 + 8);
-	newPtr.set32(0, newCapacity);
 
 	if (oldAddr !== 0) {
 	    for (let i = 1; i < oldPtr.size() / 4; i++) {
@@ -314,6 +313,11 @@ class Array extends localobject.LocalObject {
 	    [type, bytes] = this._valueToBytes(value);
 	    storePtr.set32(2 + 2 * idx, type);
 	    storePtr.set32(3 + 2 * idx, bytes);
+
+	    let oldSize = storePtr.get32(0);
+	    if (oldSize < idx + 1) {
+		storePtr.set32(0, idx + 1);
+	    }
 	});
 
 	return true;
