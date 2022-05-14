@@ -162,6 +162,7 @@ class Array extends localobject.LocalObject {
 	    }
 
 	    this._arena.free(storePtr);
+	    debuglog("freed backing store @ " + storePtr._base);
 	}
 	super._free();
     }
@@ -237,7 +238,28 @@ class Array extends localobject.LocalObject {
     }
 
     _impl_pop() {
-	throw new Error("pop() not implemented");
+	let storePtr = this._getStore();
+	if (storePtr === null) {
+	    return undefined;
+	}
+
+	let oldSize = this._getSize(storePtr);
+	if (oldSize === 0) {
+	    return undefined;
+	}
+
+	let newSize = oldSize - 1;
+	let type = storePtr.get32(2 + newSize * 2);
+	let bytes = storePtr.get32(3 + newSize * 2);
+	let result = this._valueFromBytes(type, bytes);
+
+	this._freeValue(type, bytes);
+	[type, bytes] = this._valueToBytes(undefined);
+	storePtr.set32(2 + newSize * 2, type);
+	storePtr.set32(2 + newSize * 3, bytes);
+	storePtr.set32(0, newSize);
+
+	return result;
     }
 
     _impl_unshift() {

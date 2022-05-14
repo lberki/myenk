@@ -133,4 +133,28 @@ describe("array", () => {
 	expect(a[2]).toBe("c");
 	expect(a[3]).toBe("d");
     });
+
+    it("implements pop()", async () => {
+	let w = world.World.create(1024);
+	let left = w.left();
+	let a = w.createArray();
+
+	expect(a.pop()).toBe(undefined);
+	expect(a.length).toBe(0);
+
+	a.push("a", "b");
+
+	expect(a.pop()).toBe("b");
+	expect(a.length).toBe(1);
+
+	expect(a.pop()).toBe("a");
+	expect(a.length).toBe(0);
+
+	expect(a.pop()).toBe(undefined);
+	expect(a.length).toBe(0);
+
+	a = null;
+	await testutil.forceGc();
+	expect(w.left()).toBe(left);
+    });
 });
