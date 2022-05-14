@@ -32,6 +32,24 @@ describe("array", () => {
 	expect(a.at(-1)).toBe(undefined);
     });
 
+    it("can extend backing store", async () => {
+	let w = world.World.create(2048);
+	let left = w.left();
+	let a = w.createArray();
+
+	for (let i = 0; i < 100; i++) {
+	    a[i] = i + 1;
+	}
+
+	for (let i = 0; i < 100; i++) {
+	    expect(a[i]).toBe(i + 1);
+	}
+
+	a = null;
+	await testutil.forceGc();
+	expect(w.left()).toBe(left);
+    });
+
     it("supports null value", () => {
 	let w = world.World.create(1024);
 	let a = w.createArray();

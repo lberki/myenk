@@ -118,6 +118,7 @@ class Array extends localobject.LocalObject {
 	    for (let i = 1; i < oldPtr.size() / 4; i++) {
 		newPtr.set32(i, oldPtr.get32(i));
 	    }
+	    this._arena.free(oldPtr);
 	} else {
 	    // Initialize auxiliary dictionary ptr to "nothing"
 	    newPtr.set32(1, 0);
@@ -271,6 +272,13 @@ class Array extends localobject.LocalObject {
 	if (storePtr === null) {
 	    // No old store, allocate as much as we need
 	    storePtr = this._realloc(idx + 1);
+	} else if (idx >= this._getCapacity(storePtr)) {
+	    let newCapacity = this._getCapacity(storePtr);
+	    while (idx >= newCapacity) {
+		newCapacity = Math.ceil(newCapacity * 1.25) + 2;
+	    }
+
+	    storePtr = this._realloc(newCapacity);
 	}
 
 	this._world._withMutation(() => {
