@@ -153,13 +153,21 @@ describe("array", () => {
 	expect(a.pop()).toBe(undefined);
 	expect(a.length).toBe(0);
 
+	let d = w.createDictionary();
+	d.foo = 42;
+	a.push(d);
+	let d2 = a.pop(d);
+	expect(d2.foo).toBe(42);
+
+	d = null;
+	d2 = null;
 	a = null;
 	await testutil.forceGc();
 	expect(w.left()).toBe(left);
     });
 
-    it("stress test", () => {
-	const NUM_WORKERS = 1;
+    it("push/pop stress test", () => {
+	const NUM_WORKERS = 4;
 
 	let w = world.World.create(16384);
 	w.root().array = w.createArray();

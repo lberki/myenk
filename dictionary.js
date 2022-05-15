@@ -1,7 +1,7 @@
 "use strict";
 
 // TODO:
-// - Add critical section use to Array (and a stress test)
+// - Add critical section use to Array getter and setter (and at())
 
 // - Figure out why the latch test case is slow (150ms per iteration!)
 // - Implement symbols as keys

@@ -84,6 +84,9 @@ const handlers = {
 class Array extends localobject.LocalObject {
     constructor(world, arena, ptr) {
 	super(world, arena, ptr);
+
+	this._impl_pop = this._asAtomic(this._popAtomic);
+	this._impl_push = this._asAtomic(this._pushAtomic);
     }
 
     static _registerForWorld(privateSymbol, bufferType) {
@@ -96,6 +99,17 @@ class Array extends localobject.LocalObject {
 	let proxy = new Proxy(obj, handlers);
 
 	return [obj, proxy];
+    }
+
+
+    _asAtomic(f) {
+	return (...args) => {
+	    return this._world._withMutation(() => {
+		return this._criticalSection.run(() => {
+		    return f.call(this, ...args);
+		});
+	    });
+	};
     }
 
     _init() {
@@ -213,7 +227,7 @@ class Array extends localobject.LocalObject {
 	});
     }
 
-    _impl_push(...args) {
+    _pushAtomic(...args) {
 	let oldSize;
 
 	let storePtr = this._getStore();
@@ -226,18 +240,16 @@ class Array extends localobject.LocalObject {
 	let newSize = oldSize + args.length;
 	storePtr = this._reallocMaybe(newSize);
 
-	this._world._withMutation(() => {
-	    for (let i = 0; i < args.length; i++) {
-		let [type, bytes] = this._valueToBytes(args[i]);
-		storePtr.set32(2 + 2 * (oldSize + i), type);
-		storePtr.set32(3 + 2 * (oldSize + i), bytes);
-	    }
-	});
+	for (let i = 0; i < args.length; i++) {
+	    let [type, bytes] = this._valueToBytes(args[i]);
+	    storePtr.set32(2 + 2 * (oldSize + i), type);
+	    storePtr.set32(3 + 2 * (oldSize + i), bytes);
+	}
 
 	storePtr.set32(0, newSize);
     }
 
-    _impl_pop() {
+    _popAtomic() {
 	let storePtr = this._getStore();
 	if (storePtr === null) {
 	    return undefined;
@@ -256,7 +268,7 @@ class Array extends localobject.LocalObject {
 	this._freeValue(type, bytes);
 	[type, bytes] = this._valueToBytes(undefined);
 	storePtr.set32(2 + newSize * 2, type);
-	storePtr.set32(2 + newSize * 3, bytes);
+	storePtr.set32(3 + newSize * 2, bytes);
 	storePtr.set32(0, newSize);
 
 	return result;
