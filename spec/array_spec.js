@@ -157,4 +157,26 @@ describe("array", () => {
 	await testutil.forceGc();
 	expect(w.left()).toBe(left);
     });
+
+    it("stress test", () => {
+	const NUM_WORKERS = 1;
+
+	let w = world.World.create(16384);
+	w.root().array = w.createArray();
+	w.root().start = w.createLatch(1);
+	w.root().end = w.createLatch(NUM_WORKERS);
+	w.root().lock = w.createLock();
+
+	let workers = new Array();
+	for (let i = 0; i < NUM_WORKERS; i++) {
+	    w.root()["latch_" + i] = w.createLatch(1);
+	    workers.push(testutil.spawnWorker(
+		w, "array_spec_worker.js", "arrayStressTest",
+		i, []));
+	}
+
+	w.root().start.dec();
+	w.root().end.wait();
+	w.sanityCheck();
+    });
 });
