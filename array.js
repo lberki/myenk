@@ -334,14 +334,6 @@ class Array extends localobject.LocalObject {
 
     }
 
-    _impl_unshift() {
-	throw new Error("unshift() not implemented");
-    }
-
-    _impl_shift() {
-	throw new Error("shift() not implemented");
-    }
-
     _impl_concat() {
 	throw new Error("concat() not implemented");
     }
