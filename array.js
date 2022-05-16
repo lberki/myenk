@@ -87,6 +87,9 @@ class Array extends localobject.LocalObject {
 
 	this._impl_pop = this._asAtomic(this._popAtomic);
 	this._impl_push = this._asAtomic(this._pushAtomic);
+	this._impl_at = this._asAtomic(this._atAtomic);
+	this._set = this._asAtomic(this._setAtomic);
+	this._getLength = this._asAtomic(this._getLengthAtomic);
     }
 
     static _registerForWorld(privateSymbol, bufferType) {
@@ -198,7 +201,7 @@ class Array extends localobject.LocalObject {
 	return storePtr.get32(0);
     }
 
-    _impl_at(i) {
+    _atAtomic(i) {
 	let idx;
 	if (typeof(i) === "number") {
 	    idx = i;
@@ -222,9 +225,7 @@ class Array extends localobject.LocalObject {
 	let type = storePtr.get32(2 + 2 * idx);
 	let bytes = storePtr.get32(3 + 2 * idx);
 
-	return this._world._withMutation(() => {
-	    return this._valueFromBytes(type, bytes);
-	});
+	return this._valueFromBytes(type, bytes);
     }
 
     _pushAtomic(...args) {
@@ -312,12 +313,7 @@ class Array extends localobject.LocalObject {
 	}
 
 	if (property === "length") {
-	    let storePtr = this._getStore();
-	    if (storePtr === null) {
-		return 0;
-	    } else {
-		return this._getSize(storePtr);
-	    }
+	    return this._getLength();
 	}
 
 	let implName = "_impl_" + property;
@@ -328,7 +324,19 @@ class Array extends localobject.LocalObject {
 	return undefined;
     }
 
-    _set(property, value) {
+    _getLengthAtomic() {
+	let storePtr = this._getStore();
+	if (storePtr === null) {
+	    return 0;
+	} else {
+	    return this._getSize(storePtr);
+	}
+    }
+
+    _getNonIndexAtomic(property) {
+    }
+
+    _setAtomic(property, value) {
 	let idx = parseInt(property);
 	if (isNaN(idx) || idx < 0) {
 	    // TODO: according to spec, we should be able to set arbitrary keys even though it requires
@@ -339,20 +347,18 @@ class Array extends localobject.LocalObject {
 	// Set numeric index
 	let storePtr = this._reallocMaybe(idx + 1);
 
-	this._world._withMutation(() => {
-	    let type = storePtr.get32(2 + 2 * idx);
-	    let bytes = storePtr.get32(3 + 2 * idx);
-	    this._freeValue(type, bytes);
+	let type = storePtr.get32(2 + 2 * idx);
+	let bytes = storePtr.get32(3 + 2 * idx);
+	this._freeValue(type, bytes);
 
-	    [type, bytes] = this._valueToBytes(value);
-	    storePtr.set32(2 + 2 * idx, type);
-	    storePtr.set32(3 + 2 * idx, bytes);
+	[type, bytes] = this._valueToBytes(value);
+	storePtr.set32(2 + 2 * idx, type);
+	storePtr.set32(3 + 2 * idx, bytes);
 
-	    let oldSize = storePtr.get32(0);
-	    if (oldSize < idx + 1) {
-		storePtr.set32(0, idx + 1);
-	    }
-	});
+	let oldSize = storePtr.get32(0);
+	if (oldSize < idx + 1) {
+	    storePtr.set32(0, idx + 1);
+	}
 
 	return true;
     }

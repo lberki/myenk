@@ -187,7 +187,7 @@ describe("array", () => {
     });
 
     it("get/set stress test", async () => {
-	const NUM_WORKERS = 1;
+	const NUM_WORKERS = 4;
 
 	let w = world.World.create(16384);
 	w.root().start = w.createLatch(1);
