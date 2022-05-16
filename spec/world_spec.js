@@ -42,12 +42,31 @@ describe("world", () => {
 	expect(w1.objectCount()).toBe(0);
     });
 
-    it("can free reference cycles", async () => {
+    it("can free dictionary reference cycles", async () => {
 	let w = world.World.create(1024);
 	w.root().foo = w.createDictionary();
 	w.root().bar = w.createDictionary();
 	w.root().foo.bar = w.root().bar;
 	w.root().bar.foo = w.root().foo;
+
+	delete w.root().foo;
+	delete w.root().bar;
+
+	await testutil.forceGc();
+	expect(w.objectCount()).toBe(2);  // Cycle is not freed on JS GC
+
+	w.gc();
+	w.sanityCheck();
+	expect(w.objectCount()).toBe(0);
+    });
+
+    it("can free array reference cycles", async () => {
+	let w = world.World.create(1024);
+
+	w.root().foo = w.createArray();
+	w.root().bar = w.createArray();
+	w.root().foo[0] = w.root().bar;
+	w.root().bar[0] = w.root().foo;
 
 	delete w.root().foo;
 	delete w.root().bar;

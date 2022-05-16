@@ -1,8 +1,7 @@
 "use strict";
 
 // TODO:
-// - Add a circular memory reference test for Array
-// - Implement remaining fields for Array
+// - Implement remaining methods for Array
 // - Implement auxiliary dictionary for Array (make sure not to double lock)
 
 // - Figure out why the latch test case is slow (150ms per iteration!)
