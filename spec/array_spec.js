@@ -170,21 +170,54 @@ describe("array", () => {
 	const NUM_WORKERS = 4;
 
 	let w = world.World.create(16384);
-	w.root().array = w.createArray();
 	w.root().start = w.createLatch(1);
 	w.root().end = w.createLatch(NUM_WORKERS);
-	w.root().lock = w.createLock();
+	w.root().array = w.createArray();
 
 	let workers = new Array();
 	for (let i = 0; i < NUM_WORKERS; i++) {
-	    w.root()["latch_" + i] = w.createLatch(1);
 	    workers.push(testutil.spawnWorker(
-		w, "array_spec_worker.js", "arrayStressTest",
+		w, "array_spec_worker.js", "pushPopStressTest",
 		i, []));
 	}
 
 	w.root().start.dec();
 	w.root().end.wait();
 	w.sanityCheck();
+    });
+
+    it("get/set stress test", async () => {
+	const NUM_WORKERS = 1;
+
+	let w = world.World.create(16384);
+	w.root().start = w.createLatch(1);
+	w.root().end = w.createLatch(NUM_WORKERS);
+
+	let workers = new Array();
+	for (let i = 0; i < NUM_WORKERS; i++) {
+	    workers.push(testutil.spawnWorker(
+		w, "array_spec_worker.js", "getSetStressTest",
+		i, []));
+	}
+
+	let objectsBefore = w.objectCount();
+
+	w.root().array = w.createArray();
+	w.root().values = w.createArray();
+
+	w.root().array[99] = undefined;
+	for (let i = 0; i < 10; i++) {
+	    w.root().values.push(w.createDictionary());
+	}
+
+	w.root().start.dec();
+	w.root().end.wait();
+
+	delete w.root().array;
+	delete w.root().values;
+
+	w.sanityCheck();
+	await testutil.forceGc();
+	expect(w.objectCount()).toBe(objectsBefore);
     });
 });
