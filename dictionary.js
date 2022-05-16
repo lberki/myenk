@@ -1,11 +1,12 @@
 "use strict";
 
 // TODO:
-// - Add critical section use to Array getter and setter (and at())
+// - Add a circular memory reference test for Array
+// - Implement remaining fields for Array
+// - Implement auxiliary dictionary for Array (make sure not to double lock)
 
 // - Figure out why the latch test case is slow (150ms per iteration!)
-// - Implement symbols as keys
-// - Implement more JS data types (mainly Array)
+// - Implement symbols as dictionary keys and values
 
 // KNOWLEDGE BASE:
 // - Float64Array for FP

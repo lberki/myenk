@@ -166,6 +166,37 @@ describe("array", () => {
 	expect(w.left()).toBe(left);
     });
 
+    it("implements unshift()", async () => {
+	let w = world.World.create(1024);
+	let left = w.left();
+	let a = w.createArray();
+
+	a.unshift(6, 7, 8);
+	expect(a.length).toBe(3);
+	expect(a[0]).toBe(6);
+	expect(a[1]).toBe(7);
+	expect(a[2]).toBe(8);
+
+	a = null;
+	await testutil.forceGc();
+	expect(w.left()).toBe(left);
+    });
+
+    it("implements shift()", () => {
+	let w = world.World.create(1024);
+	let left = w.left();
+	let a = w.createArray();
+
+	expect(a.shift()).toBe(undefined);
+	a[0] = 6;
+	a[1] = 7;
+	expect(a.shift()).toBe(6);
+	expect(a.length).toBe(1);
+	expect(a.shift()).toBe(7);
+	expect(a.length).toBe(0);
+	expect(a.shift()).toBe(undefined);
+    });
+
     it("push/pop stress test", () => {
 	const NUM_WORKERS = 4;
 

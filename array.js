@@ -87,6 +87,8 @@ class Array extends localobject.LocalObject {
 
 	this._impl_pop = this._asAtomic(this._popAtomic);
 	this._impl_push = this._asAtomic(this._pushAtomic);
+	this._impl_shift = this._asAtomic(this._shiftAtomic);
+	this._impl_unshift = this._asAtomic(this._unshiftAtomic);
 	this._impl_at = this._asAtomic(this._atAtomic);
 	this._set = this._asAtomic(this._setAtomic);
 	this._getLength = this._asAtomic(this._getLengthAtomic);
@@ -273,6 +275,63 @@ class Array extends localobject.LocalObject {
 	storePtr.set32(0, newSize);
 
 	return result;
+    }
+
+    _unshiftAtomic(...args) {
+	let oldSize;
+	let storePtr = this._getStore();
+	if (storePtr === null) {
+	    oldSize = 0;
+	} else {
+	    oldSize = this._getSize(storePtr);
+	}
+
+	// TODO: this potentially moves memory *twice* which could be avoided by a tiny bit more
+	// complicated reallocation logic, but I am optimizing for development time here
+	let newSize = oldSize + args.length;
+	storePtr = this._reallocMaybe(newSize);
+
+	for (let i = oldSize * 2 - 1; i >= 0; i--) {
+	    storePtr.set32(args.length * 2 + 2 + i, storePtr.get32(2 + i));
+	}
+
+	for (let i = 0; i < args.length; i++) {
+	    let [type, bytes] = this._valueToBytes(args[i]);
+	    storePtr.set32(2 + i * 2, type);
+	    storePtr.set32(3 + i * 2, bytes);
+	}
+
+	storePtr.set32(0, newSize);
+    }
+
+    _shiftAtomic() {
+	let storePtr = this._getStore();
+	if (storePtr === null) {
+	    return undefined;
+	}
+
+	let oldSize = this._getSize(storePtr);
+	if (oldSize === 0) {
+	    return undefined;
+	}
+
+	let type = storePtr.get32(2);
+	let bytes = storePtr.get32(3);
+	let newSize = oldSize - 1;
+	let result = this._valueFromBytes(type, bytes);
+
+	for (let i = 0; i < newSize * 2; i++) {
+	    storePtr.set32(2 + i, storePtr.get32(4 + i));
+	}
+
+	this._freeValue(type, bytes);
+	[type, bytes] = this._valueToBytes(undefined);
+	storePtr.set32(2 + newSize * 2, type);
+	storePtr.set32(3 + newSize * 2, bytes);
+	storePtr.set32(0, newSize);
+
+	return result;
+
     }
 
     _impl_unshift() {
