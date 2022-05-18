@@ -85,6 +85,10 @@ class Array extends localobject.LocalObject {
     constructor(world, arena, ptr) {
 	super(world, arena, ptr);
 
+	// Private methods
+	this._cloneValues = this._asAtomic(this._cloneValuesAtomic);
+
+	// Implementations of Array methods
 	this._impl_pop = this._asAtomic(this._popAtomic);
 	this._impl_push = this._asAtomic(this._pushAtomic);
 	this._impl_shift = this._asAtomic(this._shiftAtomic);
@@ -334,8 +338,60 @@ class Array extends localobject.LocalObject {
 
     }
 
-    _impl_concat() {
-	throw new Error("concat() not implemented");
+    _cloneValuesAtomic() {
+	let result = []
+	let storePtr = this._getStore()
+	let size = this._getSize(storePtr);
+	for (let i = 0; i < size; i++) {
+	    result.push(this._cloneValue(storePtr.get32(2 + i * 2), storePtr.get32(3 + i * 2)));
+	}
+
+	return result;
+    }
+
+    _impl_concat(...args) {
+	let outputSize = 0;
+	let values = [];
+	let ok = false;
+
+	try {
+	    values.push(...this._cloneValues());
+	    for (let arg of args) {
+		if (this._isInstance(arg, BUFFER_TYPE)) {
+		    // This is another array. Add a reference to every value in it.
+		    values.push(...arg[PRIVATE]._cloneValues());
+		} else {
+		    // This is a regular value. Move it into our address space as usual.
+		    values.push(this._valueToBytes(arg));
+		}
+	    }
+
+	    let pub = this._world.createArray();
+	    let priv = pub[PRIVATE];
+
+	    let privStore = priv._reallocMaybe(values.length);
+	    privStore.set32(0, values.length);
+	    privStore.set32(1, 0);  // Auxiliary dict, currently not implemented
+	    for (let i = 0; i < values.length; i++) {
+		privStore.set32(2 + i * 2, values[i][0]);
+		privStore.set32(3 + i * 2, values[i][1]);
+	    }
+
+	    ok = true;
+	    return pub;
+	} finally {
+	    if (!ok) {
+		// Something went wrong. Free all memory we have allocated so far
+		// (Once we have cloned every reference things can't go wrong anymore, expect for
+		// OOM on _reallocMaybe(), but we officially don't care about ending up in a valid
+		// state after OOM)
+		this._world._withMutation(() => {
+		    for (let [type, bytes] of values) {
+			this._freeValue(type, bytes);
+		    }
+		});
+	    }
+	}
     }
 
     _impl_slice() {

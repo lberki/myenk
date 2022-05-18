@@ -40,6 +40,22 @@ class LocalObject {
 	);
     }
 
+    _isInstance(obj, expectedType) {
+	let priv = obj[PRIVATE];
+	if (priv === undefined) {
+	    // Not a LocalObject
+	    return false;
+	}
+
+	if (priv._world !== this._world) {
+	    // A different World, doesn't work
+	    return false;
+	}
+
+	let actualType = LocalObject._getType(priv._ptr.get32(1));
+	return expectedType === actualType;
+    }
+
     static _criticalSectionAddr(base) {
 	return (base + arena.BLOCK_HEADER_SIZE) / 4 + 2;
     }
@@ -80,6 +96,24 @@ class LocalObject {
 	    if (bytes !== 0) {
 		this._arena.free(this._arena.fromAddr(bytes));
 	    }
+	}
+    }
+
+    _cloneValue(type, bytes) {
+	if (type === ValueType.OBJECT) {
+	    this._world._addWorldRef(this._arena.fromAddr(bytes));
+	    return [type, bytes];
+	} else if (type === ValueType.STRING) {
+	    if (bytes === 0) {
+		return [type, bytes];
+	    } else {
+		let oldPtr = this._arena.fromAddr(bytes);
+		let newPtr = this._arena.alloc(oldPtr.size());
+		newPtr.asUint8().set(oldPtr.asUint8());
+		return [type, newPtr._base];
+	    }
+	} else {
+	    return [type, bytes];
 	}
     }
 
@@ -137,7 +171,6 @@ class LocalObject {
 		bytes = valuePtr._base;
 	    }
 	} else {
-	    console.log(value);
 	    throw new Error("not implemented");
 	}
 

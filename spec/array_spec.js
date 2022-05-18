@@ -197,6 +197,88 @@ describe("array", () => {
 	expect(a.shift()).toBe(undefined);
     });
 
+    it("implements concat()", () => {
+	let w = world.World.create(1024);
+	let a1 = w.createArray();
+	a1[0] = 1;
+	a1[1] = 2;
+	let a2 = w.createArray();
+	a2[0] = 3;
+	a2[1] = 4;
+	let a3 = w.createArray();
+	a3[0] = 5;
+	a3[1] = 6;
+	let a = a1.concat(a2, 101, a3, 102);
+	expect(a[0]).toBe(1);
+	return;
+	expect(a[1]).toBe(2);
+	expect(a[2]).toBe(3);
+	expect(a[3]).toBe(4);
+	expect(a[4]).toBe(101);
+	expect(a[5]).toBe(5);
+	expect(a[6]).toBe(6);
+	expect(a[7]).toBe(102);
+    });
+
+    it("concat() handles references", async () => {
+	let w = world.World.create(1024);
+	let a1 = w.createArray();
+	a1[0] = w.createDictionary();
+	a1[1] = w.createDictionary();
+	let a2 = w.createArray();
+	a2[0] = w.createDictionary();
+	a2[1] = w.createDictionary();
+
+	let a = a1.concat(a2);
+	expect(a1[0] === a[0]).toBe(true);
+	expect(a1[1] === a[1]).toBe(true);
+	expect(a2[0] === a[2]).toBe(true);
+	expect(a2[1] === a[3]).toBe(true);
+
+	a1 = null;
+	a2 = null;
+	await testutil.forceGc();
+	expect(w.objectCount()).toBe(5);
+
+	a = null;
+	await testutil.forceGc();
+	expect(w.objectCount()).toBe(0);
+    });
+
+    it("concat() handles strings", async () => {
+	let w = world.World.create(1024);
+	let a1 = w.createArray();
+	a1[0] = "foo";
+	let a2 = w.createArray();
+	a2[0] = "bar";
+
+	let a = a1.concat(a2, "qux");
+	expect(a[0]).toBe("foo");
+	expect(a[1]).toBe("bar");
+	expect(a[2]).toBe("qux");
+    });
+
+    it("concat() deletes early references on failure", async () => {
+	let w = world.World.create(1024);
+	let a1 = w.createArray();
+	a1[0] = w.createDictionary();
+	let a2 = w.createArray();
+	a2[0] = w.createDictionary();
+
+	let left = w.left();
+	expect(() => { a1.concat(a2, {}); }).toThrow();
+
+	// Checks are done in this sequence because object allocation may result in allocating
+	// memory for the object list; so we can verify that concat() frees all the memory it
+	// allocates but we can't compare memory left to a number before the allocation of a1/a2.
+	expect(w.left()).toBe(left);
+	a1 = null;
+	a2 = null;
+	await testutil.forceGc();
+	expect(w.objectCount()).toBe(0);
+
+    });
+
     it("push/pop stress test", () => {
 	const NUM_WORKERS = 4;
 
