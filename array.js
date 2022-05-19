@@ -9,6 +9,16 @@ let localobject = require("./localobject.js");
 let PRIVATE = null;
 let BUFFER_TYPE = null;
 
+function clamp(v, min, max) {
+    if (v < min) {
+	return min;
+    } else if (v > max) {
+	return max;
+    } else {
+	return v;
+    }
+}
+
 function handlerApply(target, thisArg, args) {
     throw new Error("impossible");
 }
@@ -338,15 +348,53 @@ class Array extends localobject.LocalObject {
 
     }
 
-    _cloneValuesAtomic() {
-	let result = []
-	let storePtr = this._getStore()
+    _cloneValuesAtomic(start, end) {
+	let result = [];
+	let storePtr = this._getStore();
+	if (storePtr === null) {
+	    return result;
+	}
+
 	let size = this._getSize(storePtr);
-	for (let i = 0; i < size; i++) {
+	if (start === undefined) {
+	    start = 0;
+	} else if (start < 0) {
+	    start = size + start;
+	}
+
+	if (end === undefined) {
+	    end = size;
+	} else if (end < 0) {
+	    end = size + end;
+	}
+
+	start = clamp(start, 0, size);
+	end = clamp(end, 0, size);
+
+	for (let i = start; i < end; i++) {
 	    result.push(this._cloneValue(storePtr.get32(2 + i * 2), storePtr.get32(3 + i * 2)));
 	}
 
 	return result;
+    }
+
+    _createNewArray(values) {
+	let pub = this._world.createArray();
+	let priv = pub[PRIVATE];
+
+	if (values.length === 0) {
+	    return pub;
+	}
+
+	let privStore = priv._reallocMaybe(values.length);
+	privStore.set32(0, values.length);
+	privStore.set32(1, 0);  // Auxiliary dict, currently not implemented
+	for (let i = 0; i < values.length; i++) {
+	    privStore.set32(2 + i * 2, values[i][0]);
+	    privStore.set32(3 + i * 2, values[i][1]);
+	}
+
+	return pub;
     }
 
     _impl_concat(...args) {
@@ -366,19 +414,8 @@ class Array extends localobject.LocalObject {
 		}
 	    }
 
-	    let pub = this._world.createArray();
-	    let priv = pub[PRIVATE];
-
-	    let privStore = priv._reallocMaybe(values.length);
-	    privStore.set32(0, values.length);
-	    privStore.set32(1, 0);  // Auxiliary dict, currently not implemented
-	    for (let i = 0; i < values.length; i++) {
-		privStore.set32(2 + i * 2, values[i][0]);
-		privStore.set32(3 + i * 2, values[i][1]);
-	    }
-
 	    ok = true;
-	    return pub;
+	    return this._createNewArray(values);
 	} finally {
 	    if (!ok) {
 		// Something went wrong. Free all memory we have allocated so far
@@ -394,8 +431,9 @@ class Array extends localobject.LocalObject {
 	}
     }
 
-    _impl_slice() {
-	throw new Error("slice() not implemented");
+    _impl_slice(start, end) {
+	let values = this._cloneValues(start, end);
+	return this._createNewArray(values);
     }
 
     _impl_splice() {

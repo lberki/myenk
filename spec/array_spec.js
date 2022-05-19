@@ -3,6 +3,14 @@
 let testutil = require("./testutil.js");
 let world = require("../world.js");
 
+// This returns an ugly error message in case of an assertion failure. We'll fix that once
+// dictionary is smart enough so that Jasmine can print it.
+function checkArray(actual, ...expected) {
+    for (let i = 0;  i < expected.length; i++) {
+	expect(actual[i] === expected[i]).toBe(true);
+    }
+}
+
 describe("array", () => {
     it("exists", () => {
 	let w = world.World.create(1024);
@@ -209,15 +217,7 @@ describe("array", () => {
 	a3[0] = 5;
 	a3[1] = 6;
 	let a = a1.concat(a2, 101, a3, 102);
-	expect(a[0]).toBe(1);
-	return;
-	expect(a[1]).toBe(2);
-	expect(a[2]).toBe(3);
-	expect(a[3]).toBe(4);
-	expect(a[4]).toBe(101);
-	expect(a[5]).toBe(5);
-	expect(a[6]).toBe(6);
-	expect(a[7]).toBe(102);
+	checkArray(a, 1, 2, 3, 4, 101, 5, 6, 102);
     });
 
     it("concat() handles references", async () => {
@@ -230,10 +230,7 @@ describe("array", () => {
 	a2[1] = w.createDictionary();
 
 	let a = a1.concat(a2);
-	expect(a1[0] === a[0]).toBe(true);
-	expect(a1[1] === a[1]).toBe(true);
-	expect(a2[0] === a[2]).toBe(true);
-	expect(a2[1] === a[3]).toBe(true);
+	checkArray(a, a1[0], a1[1], a2[0], a2[1]);
 
 	a1 = null;
 	a2 = null;
@@ -253,9 +250,7 @@ describe("array", () => {
 	a2[0] = "bar";
 
 	let a = a1.concat(a2, "qux");
-	expect(a[0]).toBe("foo");
-	expect(a[1]).toBe("bar");
-	expect(a[2]).toBe("qux");
+	checkArray(a, "foo", "bar", "qux");
     });
 
     it("concat() deletes early references on failure", async () => {
@@ -277,6 +272,20 @@ describe("array", () => {
 	await testutil.forceGc();
 	expect(w.objectCount()).toBe(0);
 
+    });
+
+    it("implements slice()", () => {
+	let w = world.World.create(1024);
+	let a = w.createArray();
+	a.push(9, 8, 7, 6, 5, 4, 3);
+
+	checkArray(a.slice(), 9, 8, 7, 6, 5, 4, 3);
+	checkArray(a.slice(3), 6, 5, 4, 3);
+	checkArray(a.slice(3, 5), 6, 5);
+	checkArray(a.slice(-2), 4, 3);
+	checkArray(a.slice(-4, -2), 6, 5);
+	checkArray(a.slice(100));
+	checkArray(a.slice(-2, 100), 4, 3);
     });
 
     it("push/pop stress test", () => {
