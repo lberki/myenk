@@ -445,9 +445,10 @@ class Array extends localobject.LocalObject {
 	let newSize = size + delta;
 	storePtr = this._reallocMaybe(newSize);
 
-	// Free values that are deleted.
+	// Save values that are deleted.
+	let result = [];
 	for (let i = start; i < start + deleteCount; i++) {
-	    this._freeValue(storePtr.get32(2 + 2 * i), storePtr.get32(3 + 2 * i));
+	    result.push([storePtr.get32(2 + 2 * i), storePtr.get32(3 + 2 * i)]);
 	}
 
 	// Move the part of the array after the discarded values to its right place
@@ -464,6 +465,7 @@ class Array extends localobject.LocalObject {
 	}
 
 	storePtr.set32(0, newSize);
+	return result;
     }
 
     _logContents(storePtr) {
@@ -501,9 +503,8 @@ class Array extends localobject.LocalObject {
 
 	// This can signal an OOM but we don't care much about refcounts after an OOM, at least for
 	// the time being
-	this._doSplice(start, deleteCount, itemValues);
-
-	// TODO: return self, somehow
+	let removedValues = this._doSplice(start, deleteCount, itemValues);
+	return this._createNewArray(removedValues);
     }
 
     _impl_values() {

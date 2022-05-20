@@ -292,11 +292,13 @@ describe("array", () => {
 	let w = world.World.create(1024);
 	let a = w.createArray();
 	a.push(6, 5, 4, 3, 2);
-	a.splice(2, 2, 100);
+	let result = a.splice(2, 2, 100);
 	checkArray(a, 6, 5, 100, 2);
+	checkArray(result, 4, 3);
 
-	a.splice(1, 1, 200, 201);
+	result = a.splice(1, 1, 200, 201);
 	checkArray(a, 6, 200, 201, 100, 2);
+	checkArray(result, 5);
     });
 
     it("handles references in splice() correctly", async () => {
@@ -310,8 +312,10 @@ describe("array", () => {
 
 	expect(w.objectCount()).toBe(6);
 	a.push(d1, d2, d3);
-	a.splice(1, 1, d4, d5);
+	let result = a.splice(1, 1, d4, d5);
 	expect(a.length).toBe(4);
+	checkArray(result, d2);
+	result = null;
 	d2 = null;
 
 	await testutil.forceGc();
