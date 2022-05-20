@@ -97,6 +97,7 @@ class Array extends localobject.LocalObject {
 
 	// Private methods
 	this._cloneValues = this._asAtomic(this._cloneValuesAtomic);
+	this._doSplice = this._asAtomic(this._doSpliceAtomic);
 
 	// Implementations of Array methods
 	this._impl_pop = this._asAtomic(this._popAtomic);
@@ -436,8 +437,73 @@ class Array extends localobject.LocalObject {
 	return this._createNewArray(values);
     }
 
-    _impl_splice() {
-	throw new Error("splice() not implemented");
+    _doSpliceAtomic(start, deleteCount, values) {
+	let storePtr = this._getStore();
+	let size = storePtr === null ? 0 : storePtr.get32(0);
+	deleteCount = clamp(deleteCount, 0, size - start);
+	let delta = values.length - deleteCount;
+	let newSize = size + delta;
+	storePtr = this._reallocMaybe(newSize);
+
+	// Free values that are deleted.
+	for (let i = start; i < start + deleteCount; i++) {
+	    this._freeValue(storePtr.get32(2 + 2 * i), storePtr.get32(3 + 2 * i));
+	}
+
+	// Move the part of the array after the discarded values to its right place
+	let buf = storePtr.asUint8();
+	buf.copyWithin(
+	    8 + (start + values.length) * 8,  // target
+	    8 + (start + deleteCount) * 8,    // start
+	    8 + size * 8);                    // end
+
+	// Splice in the new values
+	for (let i = 0; i < values.length; i++) {
+	    storePtr.set32(2 + 2 * (start + i), values[i][0]);
+	    storePtr.set32(3 + 2 * (start + i), values[i][1]);
+	}
+
+	storePtr.set32(0, newSize);
+    }
+
+    _logContents(storePtr) {
+	let contents = "[ ";
+	console.log("size: " + storePtr.get32(0));
+	for (let i = 0; i < 2 + 2 * storePtr.get32(0); i++) {
+	    contents += storePtr.get32(i) + ", ";
+	}
+
+	contents += "]";
+	console.log("CONTENTS: " + contents);
+    }
+
+    _impl_splice(start, deleteCount, ...items) {
+	let itemValues = [];
+	let ok = false;
+
+	try {
+	    this._world._withMutation(() => {
+		for (let item of items) {
+		    itemValues.push(this._valueToBytes(item));
+		}
+	    });
+	    ok = true;
+	} finally {
+	    if (!ok) {
+		console.log("wtf");
+		this._world._withMutation(() => {
+		    for (let [type, bytes] of itemValues) {
+			this._freeValue(type, bytes);
+		    }
+		});
+	    }
+	}
+
+	// This can signal an OOM but we don't care much about refcounts after an OOM, at least for
+	// the time being
+	this._doSplice(start, deleteCount, itemValues);
+
+	// TODO: return self, somehow
     }
 
     _impl_values() {

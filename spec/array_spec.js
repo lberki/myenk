@@ -288,6 +288,44 @@ describe("array", () => {
 	checkArray(a.slice(-2, 100), 4, 3);
     });
 
+    it("implements splice()", () => {
+	let w = world.World.create(1024);
+	let a = w.createArray();
+	a.push(6, 5, 4, 3, 2);
+	a.splice(2, 2, 100);
+	checkArray(a, 6, 5, 100, 2);
+
+	a.splice(1, 1, 200, 201);
+	checkArray(a, 6, 200, 201, 100, 2);
+    });
+
+    it("handles references in splice() correctly", async () => {
+	let w = world.World.create(1024);
+	let a = w.createArray();
+	let d1 = w.createDictionary();
+	let d2 = w.createDictionary();
+	let d3 = w.createDictionary();
+	let d4 = w.createDictionary();
+	let d5 = w.createDictionary();
+
+	expect(w.objectCount()).toBe(6);
+	a.push(d1, d2, d3);
+	a.splice(1, 1, d4, d5);
+	expect(a.length).toBe(4);
+	d2 = null;
+
+	await testutil.forceGc();
+	expect(w.objectCount()).toBe(5);  // d2 should have been GCd
+
+	a = null;
+	d1 = null;
+	d3 = null;
+	d4 = null;
+	d5 = null;
+	await testutil.forceGc();
+	expect(w.objectCount()).toBe(0);
+    });
+
     it("push/pop stress test", () => {
 	const NUM_WORKERS = 4;
 
