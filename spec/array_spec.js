@@ -330,6 +330,31 @@ describe("array", () => {
 	expect(w.objectCount()).toBe(0);
     });
 
+    it("implements values()", () => {
+	let w = world.World.create(1024);
+	let a = w.createArray();
+	let a2 = Array.from(a.values());
+	expect(a2).toEqual([]);
+
+	a.push(5, 4, 3);
+	a2 = Array.from(a.values());
+	expect(a2).toEqual([5, 4, 3]);
+    });
+
+    it("implements values() while being mutated", () => {
+	let w = world.World.create(1024);
+	let a = w.createArray();
+	a.push(5);
+	let i = a.values();
+	expect(i.next()).toEqual({value: 5, done: false});
+	a.push(4);
+	expect(i.next()).toEqual({value: 4, done: false});
+	a.push(3, 2);
+	expect(i.next()).toEqual({value: 3, done: false});
+	a.pop();
+	expect(i.next()).toEqual({value: undefined, done: true});
+    });
+
     it("push/pop stress test", () => {
 	const NUM_WORKERS = 4;
 

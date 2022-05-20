@@ -96,6 +96,7 @@ class Array extends localobject.LocalObject {
 	super(world, arena, ptr);
 
 	// Private methods
+	this._nextValue = this._asAtomic(this._nextValueAtomic);
 	this._cloneValues = this._asAtomic(this._cloneValuesAtomic);
 	this._doSplice = this._asAtomic(this._doSpliceAtomic);
 
@@ -507,8 +508,25 @@ class Array extends localobject.LocalObject {
 	return this._createNewArray(removedValues);
     }
 
-    _impl_values() {
-	throw new Error("values() not implemented");
+    _nextValueAtomic(i) {
+	if (i >= this._getLengthAtomic()) {
+	    return { value: undefined, done: true };
+	} else {
+	    return { value: this._atAtomic(i), done: false };
+	}
+    }
+
+    *_impl_values() {
+	let i = 0;
+	while (true) {
+	    let n = this._nextValue(i);
+	    if (n.done) {
+		break;
+	    }
+
+	    yield n.value;
+	    i += 1;
+	}
     }
 
     _get(property) {

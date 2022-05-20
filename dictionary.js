@@ -1,7 +1,6 @@
 "use strict";
 
 // TODO:
-// - Implement remaining methods for Array
 // - Implement auxiliary dictionary for Array (make sure not to double lock)
 
 // - Figure out why the latch test case is slow (150ms per iteration!)
