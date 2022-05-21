@@ -9,6 +9,9 @@ let sync_internal = require("./sync_internal.js");
 let OBJECT_TYPE_BITS = 4;
 let MAX_OBJECT_TYPE = (1 << OBJECT_TYPE_BITS) - 1;
 
+const INT32_MIN = -2147483648;
+const INT32_MAX = 2147483647;
+
 const ValueType = {
     UNDEFINED: 1,
     NULL: 2,
@@ -126,7 +129,9 @@ class LocalObject {
 	} else if (type === ValueType.BOOLEAN) {
 	    return bytes !== 0;
 	} else if (type === ValueType.INTEGER) {
-	    return bytes;
+	    // We could also use an Int32Array but this transformation must happen somewhere so meh.
+	    // Performance is abysmal anyway.
+	    return bytes < 2147483648 ? bytes : bytes - 4294967296;
 	} else if (type == ValueType.OBJECT) {
 	    return this._world._localFromAddr(bytes);
 	} else if (type == ValueType.STRING) {
@@ -164,8 +169,7 @@ class LocalObject {
 	    type = ValueType.OBJECT;
 	    bytes = value[PRIVATE]._ptr._base;
 	    this._world._addWorldRef(value[PRIVATE]._ptr);
-	} else if (typeof(value) === "number" && value >= 0 && value < 100*1000*1000) {
-	    // TODO: support every 32-bit number
+	} else if (typeof(value) === "number" && value >= INT32_MIN && value <= INT32_MAX) {
 	    type = ValueType.INTEGER;
 	    bytes = value;
 	} else if (typeof(value) === "string") {

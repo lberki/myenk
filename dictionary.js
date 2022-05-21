@@ -1,8 +1,8 @@
 "use strict";
 
 // TODO:
+// - Implement various methods on Dictionary
 // - Implement symbol values
-// - Implement proper 32-bit numbers
 // - Shorten symbols:
 //   - world.World.create -> world.create()
 //   - createArray() -> array (and the like)

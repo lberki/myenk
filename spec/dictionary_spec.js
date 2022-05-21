@@ -83,6 +83,23 @@ describe("dictionary", () => {
 	expect(obj.bar).toBe(null);
     });
 
+    it("supports extremal 32-bit values", () => {
+	let w = world.World.create(1024);
+	let obj = w.createDictionary();
+
+	obj.small = -2147483648;
+	obj.big = 2147483647;
+	obj.zero = 0;
+	obj.one = 1;
+	obj.minusone = -1;
+
+	expect(obj.small).toBe(-2147483648);
+	expect(obj.big).toBe(2147483647);
+	expect(obj.zero).toBe(0);
+	expect(obj.one).toBe(1);
+	expect(obj.minusone).toBe(-1);
+    });
+
     it("supports Boolean values", () => {
 	let w = world.World.create(1024);
 	let obj = w.createDictionary();
