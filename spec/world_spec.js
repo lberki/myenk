@@ -99,13 +99,13 @@ describe("world", () => {
 	w.root().Number = w.deepCopy(42);
 	w.root().Null = w.deepCopy(null);
 	w.root().Undefined = w.deepCopy(undefined);
-	// w.root().Bool = w.deepCopy(true);
+	w.root().Bool = w.deepCopy(true);
 	w.root().String = "foo";
 
 	expect(w.root().Number).toBe(42);
 	expect(w.root().Null).toBe(null);
 	expect(w.root().Undefined).toBe(undefined);
-	// expect(w.root().Bool).toBe(true);
+	expect(w.root().Bool).toBe(true);
 	expect(w.root().String).toBe("foo");
     });
 

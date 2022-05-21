@@ -1,7 +1,6 @@
 "use strict";
 
 // TODO:
-// - Implement Boolean values
 // - Implement symbol values
 // - Implement proper 32-bit numbers
 // - Shorten symbols:

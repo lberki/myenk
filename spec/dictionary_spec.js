@@ -83,6 +83,16 @@ describe("dictionary", () => {
 	expect(obj.bar).toBe(null);
     });
 
+    it("supports Boolean values", () => {
+	let w = world.World.create(1024);
+	let obj = w.createDictionary();
+	obj.yes = true;
+	obj.no = false;
+
+	expect(obj.yes).toBe(true);
+	expect(obj.no).toBe(false);
+    });
+
     it("supports string values", async () => {
 	let w = world.World.create(1024);
 	let obj = w.createDictionary();

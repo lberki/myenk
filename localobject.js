@@ -12,9 +12,10 @@ let MAX_OBJECT_TYPE = (1 << OBJECT_TYPE_BITS) - 1;
 const ValueType = {
     UNDEFINED: 1,
     NULL: 2,
-    INTEGER: 3,
-    OBJECT: 4,
-    STRING: 5,
+    BOOLEAN: 3,
+    INTEGER: 4,
+    OBJECT: 5,
+    STRING: 6,
 }
 
 let PRIVATE = null;
@@ -122,6 +123,8 @@ class LocalObject {
 	    return undefined;
 	} else if (type === ValueType.NULL) {
 	    return null;
+	} else if (type === ValueType.BOOLEAN) {
+	    return bytes !== 0;
 	} else if (type === ValueType.INTEGER) {
 	    return bytes;
 	} else if (type == ValueType.OBJECT) {
@@ -145,6 +148,12 @@ class LocalObject {
 	    bytes = 0;
 	} else if (value === null) {
 	    type = ValueType.NULL;
+	    bytes = 0;
+	} else if (value === true) {
+	    type = ValueType.BOOLEAN;
+	    bytes = 1;
+	} else if (value === false) {
+	    type = ValueType.BOOLEAN;
 	    bytes = 0;
 	} else if (value[PRIVATE] !== undefined) {
 	    // An object under our control (maybe in a different world!)
