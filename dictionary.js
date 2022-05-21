@@ -1,6 +1,12 @@
 "use strict";
 
 // TODO:
+// - Implement Boolean values
+// - Implement symbol values
+// - Implement proper 32-bit numbers
+// - Shorten symbols:
+//   - world.World.create -> world.create()
+//   - createArray() -> array (and the like)
 // - Implement auxiliary dictionary for Array (make sure not to double lock)
 
 // - Figure out why the latch test case is slow (150ms per iteration!)

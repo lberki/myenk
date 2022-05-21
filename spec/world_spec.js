@@ -79,7 +79,7 @@ describe("world", () => {
 	expect(w.objectCount()).toBe(0);
     });
 
-    it("can keep objects live", () => {
+    it("can keep objects live after gc", () => {
 	let w = world.World.create(1024);
 	w.root().foo = w.createDictionary();
 	w.root().bar = w.createDictionary();
@@ -92,5 +92,73 @@ describe("world", () => {
 	w.gc();
 	w.sanityCheck();
 	expect(w.objectCount()).toBe(2);
+    });
+
+    it("can deep copy simple values", () => {
+	let w = world.World.create(1024);
+	w.root().Number = w.deepCopy(42);
+	w.root().Null = w.deepCopy(null);
+	w.root().Undefined = w.deepCopy(undefined);
+	// w.root().Bool = w.deepCopy(true);
+	w.root().String = "foo";
+
+	expect(w.root().Number).toBe(42);
+	expect(w.root().Null).toBe(null);
+	expect(w.root().Undefined).toBe(undefined);
+	// expect(w.root().Bool).toBe(true);
+	expect(w.root().String).toBe("foo");
+    });
+
+    it("can deep copy simple dictionaries", () => {
+	let w = world.World.create(1024);
+	w.root().d = w.deepCopy({"a": 2, "b": { "c": 4, "d": 5 }});
+	expect(w.objectCount()).toBe(2);
+	expect(w.root().d.a).toBe(2);
+	expect(w.root().d.b.c).toBe(4);
+	expect(w.root().d.b.d).toBe(5);
+    });
+
+    it("can deep copy simple arrays", () => {
+	let w = world.World.create(1024);
+	w.root().a1 = w.deepCopy([]);
+	w.root().a2 = w.deepCopy([6, 5, null, "foo"]);
+
+	expect(w.objectCount()).toBe(2);
+	expect(w.root().a1.length).toBe(0);
+	expect(w.root().a2.length).toBe(4);
+	expect(w.root().a2[0]).toBe(6);
+	expect(w.root().a2[1]).toBe(5);
+	expect(w.root().a2[2]).toBe(null);
+	expect(w.root().a2[3]).toBe("foo");
+    });
+
+    it("can deep copy recursive arrays", async () => {
+	let w = world.World.create(1024);
+	let rec = [];
+	rec.push(rec);
+
+	w.root().a = w.deepCopy(rec);
+	expect(w.objectCount()).toBe(1);
+	expect(w.root().a[0] === w.root().a).toBe(true);
+
+	delete w.root().a;
+	await testutil.forceGc();
+	w.gc();
+	expect(w.objectCount()).toBe(0);
+    });
+
+    it("can deep copy recursive dictionaries", async () => {
+	let w = world.World.create(1024);
+	let rec = {};
+	rec.rec = rec;
+
+	w.root().d = w.deepCopy(rec);
+	expect(w.objectCount()).toBe(1);
+	expect(w.root().d.rec === w.root().d).toBe(true);
+
+	delete w.root().d;
+	await testutil.forceGc();
+	w.gc();
+	expect(w.objectCount()).toBe(0);
     });
 });

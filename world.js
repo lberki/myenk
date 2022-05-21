@@ -130,6 +130,90 @@ class World {
 	return this._arena.bytes;
     }
 
+    deepCopy(v) {
+	return this._deepCopyRecursive(v, new Map());
+    }
+
+    _deepCopyRecursive(v, map) {
+	if (v === undefined) {
+	    return undefined;
+	}
+
+	if (v === null) {
+	    return null;
+	}
+
+	if (typeof(v) === "boolean") {
+	    return v;
+	}
+
+	if (typeof(v) === "number") {
+	    // TODO: range + integerness check
+	    return v;
+	}
+
+	if (typeof(v) === "symbol") {
+	    throw new Error("not implemented");
+	}
+
+	if (typeof(v) === "string") {
+	    return v;
+	}
+
+	if (v instanceof Array) {
+	    let result = map.get(v);
+	    if (result !== undefined) {
+		return result;
+	    }
+
+	    result = this.createArray();
+	    map.set(v, result);
+
+	    if (v.length === 0) {
+		return result;
+	    }
+
+	    result[v.length - 1] = null;  // Prevent multiple reallocations
+	    for (let i = 0; i < v.length; i++) {
+		result[i] = this._deepCopyRecursive(v[i], map);
+	    }
+
+	    return result;
+	}
+
+	if (v[PRIVATE] !== undefined) {
+	    // An object under our control (maybe not in this world!)
+	    if (v[PRIVATE]._world !== this) {
+		throw new Error("not supported");
+	    }
+
+	    return v;
+	}
+
+	if (typeof(v) === "object") {
+	    if (v.__proto__ !== Object.prototype) {
+		// This is not a simple dictionary, would be complicated to support
+		throw new Error("not supported");
+	    }
+
+	    let result = map.get(v);
+	    if (result !== undefined) {
+		return result;
+	    }
+
+	    result = this.createDictionary();
+	    map.set(v, result);
+
+	    for (let k in v) {
+		result[k] = this._deepCopyRecursive(v[k], map);
+	    }
+
+	    return result;
+	}
+
+	throw new Error("not supported");
+    }
+
     createDictionary(...args) {
 	return this._createObject(dictionary.Dictionary, ...args);
     }
