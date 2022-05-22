@@ -3,14 +3,6 @@
 let testutil = require("./testutil.js");
 let world = require("../world.js");
 
-// This returns an ugly error message in case of an assertion failure. We'll fix that once
-// dictionary is smart enough so that Jasmine can print it.
-function checkArray(actual, ...expected) {
-    for (let i = 0;  i < expected.length; i++) {
-	expect(actual[i] === expected[i]).toBe(true);
-    }
-}
-
 describe("array", () => {
     it("exists", () => {
 	let w = world.World.create(1024);
@@ -94,10 +86,7 @@ describe("array", () => {
 
 	let dict = w.createDictionary();
 	a[0] = dict;
-	// Don't use expect(a[0]) because Jasmine apparently expects a lot of things from
-	// objects passed to expect() we can't do yet
-	// TODO: change it once Dictionary is smart enough
-	expect(a[0] === dict).toBe(true);
+	expect(a[0]).toBe(dict);
     });
 
     it("keeps references to objects properly", async () => {
@@ -217,7 +206,7 @@ describe("array", () => {
 	a3[0] = 5;
 	a3[1] = 6;
 	let a = a1.concat(a2, 101, a3, 102);
-	checkArray(a, 1, 2, 3, 4, 101, 5, 6, 102);
+	testutil.checkArray(a, 1, 2, 3, 4, 101, 5, 6, 102);
     });
 
     it("concat() handles references", async () => {
@@ -230,7 +219,7 @@ describe("array", () => {
 	a2[1] = w.createDictionary();
 
 	let a = a1.concat(a2);
-	checkArray(a, a1[0], a1[1], a2[0], a2[1]);
+	testutil.checkArray(a, a1[0], a1[1], a2[0], a2[1]);
 
 	a1 = null;
 	a2 = null;
@@ -250,7 +239,7 @@ describe("array", () => {
 	a2[0] = "bar";
 
 	let a = a1.concat(a2, "qux");
-	checkArray(a, "foo", "bar", "qux");
+	testutil.checkArray(a, "foo", "bar", "qux");
     });
 
     it("concat() deletes early references on failure", async () => {
@@ -279,13 +268,13 @@ describe("array", () => {
 	let a = w.createArray();
 	a.push(9, 8, 7, 6, 5, 4, 3);
 
-	checkArray(a.slice(), 9, 8, 7, 6, 5, 4, 3);
-	checkArray(a.slice(3), 6, 5, 4, 3);
-	checkArray(a.slice(3, 5), 6, 5);
-	checkArray(a.slice(-2), 4, 3);
-	checkArray(a.slice(-4, -2), 6, 5);
-	checkArray(a.slice(100));
-	checkArray(a.slice(-2, 100), 4, 3);
+	testutil.checkArray(a.slice(), 9, 8, 7, 6, 5, 4, 3);
+	testutil.checkArray(a.slice(3), 6, 5, 4, 3);
+	testutil.checkArray(a.slice(3, 5), 6, 5);
+	testutil.checkArray(a.slice(-2), 4, 3);
+	testutil.checkArray(a.slice(-4, -2), 6, 5);
+	testutil.checkArray(a.slice(100));
+	testutil.checkArray(a.slice(-2, 100), 4, 3);
     });
 
     it("implements splice()", () => {
@@ -293,12 +282,12 @@ describe("array", () => {
 	let a = w.createArray();
 	a.push(6, 5, 4, 3, 2);
 	let result = a.splice(2, 2, 100);
-	checkArray(a, 6, 5, 100, 2);
-	checkArray(result, 4, 3);
+	testutil.checkArray(a, 6, 5, 100, 2);
+	testutil.checkArray(result, 4, 3);
 
 	result = a.splice(1, 1, 200, 201);
-	checkArray(a, 6, 200, 201, 100, 2);
-	checkArray(result, 5);
+	testutil.checkArray(a, 6, 200, 201, 100, 2);
+	testutil.checkArray(result, 5);
     });
 
     it("handles references in splice() correctly", async () => {
@@ -314,7 +303,7 @@ describe("array", () => {
 	a.push(d1, d2, d3);
 	let result = a.splice(1, 1, d4, d5);
 	expect(a.length).toBe(4);
-	checkArray(result, d2);
+	testutil.checkArray(result, d2);
 	result = null;
 	d2 = null;
 

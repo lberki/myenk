@@ -139,6 +139,7 @@ describe("world", () => {
 
 	w.root().a = w.deepCopy(rec);
 	expect(w.objectCount()).toBe(1);
+	// Array doesn't yet support getPrototypeOf() and friends
 	expect(w.root().a[0] === w.root().a).toBe(true);
 
 	delete w.root().a;
@@ -154,7 +155,7 @@ describe("world", () => {
 
 	w.root().d = w.deepCopy(rec);
 	expect(w.objectCount()).toBe(1);
-	expect(w.root().d.rec === w.root().d).toBe(true);
+	expect(w.root().d.rec).toBe(w.root().d);
 
 	delete w.root().d;
 	await testutil.forceGc();

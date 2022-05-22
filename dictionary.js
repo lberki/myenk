@@ -37,7 +37,7 @@ function handlerConstruct(target, args, newTarget) {
 }
 
 function handlerGetPrototypeOf(target) {
-    throw new Error("not supported");
+    return null;
 }
 
 function handlerSetPrototypeOf(target, prototype) {
@@ -49,7 +49,7 @@ function handlerDefineProperty(target, key, descriptor) {
 }
 
 function handlerGetOwnPropertyDescriptor(target, property) {
-    throw new Error("not implemented");
+    return target._getOwnPropertyDescriptor(property);
 }
 
 function handlerIsExtensible(target) {
@@ -77,7 +77,7 @@ function handlerHas(target, property) {
 }
 
 function handlerOwnKeys(target) {
-    throw new Error("not implemented");
+    return target._ownKeys();
 }
 
 const handlers = {
@@ -198,7 +198,8 @@ class Dictionary extends sharedobject.SharedObject {
 
     _getInMutation(property) {
 	if (typeof(property) !== "string") {
-	    throw new Error("not implemented");
+	    // The setter throws an exception so this conforms to spec
+	    return undefined;
 	}
 
 	let propBytes = ENCODER.encode(property);
@@ -271,8 +272,60 @@ class Dictionary extends sharedobject.SharedObject {
 
     _has(property) {
 	let propBytes = ENCODER.encode(property);
+
+	return this._criticalSection.run(() => {
+	    let [_, cellPtr] = this._findProperty(propBytes);
+	    return cellPtr !== null;
+	});
+    }
+
+    _getOwnPropertyDescriptor(property) {
+	return this._world._withMutation(() => {
+	    return this._criticalSection.run(() => {
+		return this._getOwnPropertyDescriptorInMutation(property);
+	    });
+	});
+    }
+
+    _getOwnPropertyDescriptorInMutation(property) {
+	if (typeof(property) !== "string") {
+	    // The setter throws an exception so this conforms to spec
+	    return undefined;
+	}
+
+	let propBytes = ENCODER.encode(property);
 	let [_, cellPtr] = this._findProperty(propBytes);
-	return cellPtr !== null;
+	if (cellPtr === null) {
+	    return undefined;
+	}
+
+	let value = this._valueFromBytes(cellPtr.get32(2), cellPtr.get32(3));
+	return {
+	    value: value,
+	    writable: true,
+	    enumerable: true,
+	    configurable: true
+	};
+    }
+
+    _ownKeys(property) {
+	let keys = [];
+
+	// It would be nice to have an iterator instead, but in that case, we'd either have to hold
+	// the object lock while the iterator is active (not a great idea) or do something really
+	// clever (and clever is trouble), so dumb algorithm it is.
+	this._criticalSection.run(() => {
+	    let cell = this._ptr.get32(0);
+	    while (cell !== 0) {
+		let cellPtr = this._arena.fromAddr(cell);
+		let keyPtr = this._arena.fromAddr(cellPtr.get32(1));
+		let key = DECODER.decode(keyPtr.asUint8());
+		keys.push(key);
+		cell = cellPtr.get32(0);
+	    }
+	});
+
+	return keys;
     }
 
     static _create(world, arena, ptr) {

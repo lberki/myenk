@@ -6,6 +6,12 @@ const worker_threads = require("worker_threads");
 
 let world = require("../world.js");
 
+function checkArray(actual, ...expected) {
+    for (let i = 0;  i < expected.length; i++) {
+	expect(actual[i]).toBe(expected[i]);
+    }
+}
+
 // Marsaglia xorshift32 algorithm
 class PRNG {
     constructor(seed) {
@@ -92,6 +98,7 @@ function spawnWorker(w, js, fn, param, latches) {
     return new WorkerProxy(w, worker);
 }
 
+exports.checkArray = checkArray;
 exports.sleep = sleep;
 exports.forceGc = forceGc;
 exports.spawnWorker = spawnWorker;

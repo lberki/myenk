@@ -179,10 +179,7 @@ describe("dictionary", () => {
 	let obj2 = w.createDictionary();
 	obj1.foo = obj2;
 
-	// Don't use expect(obj1.foo) because Jasmine apparently expects a lot of things from
-	// objects passed to expect() we can't do yet
-	// TODO: change it once Dictionary is smart enough
-	expect(obj1.foo === obj2).toBe(true);
+	expect(obj1.foo).toBe(obj2);
     });
 
     it("supports circular object references", () => {
@@ -193,11 +190,8 @@ describe("dictionary", () => {
 	obj1.other = obj2;
 	obj2.other = obj1;
 
-	// Don't use expect(obj1.foo) because Jasmine apparently expects a lot of things from
-	// objects passed to expect() we can't do yet
-	// TODO: change it once Dictionary is smart enough
-	expect(obj1.other.other === obj1).toBe(true);
-	expect(obj2.other.other === obj2).toBe(true);
+	expect(obj1.other.other).toBe(obj1);
+	expect(obj2.other.other).toBe(obj2);
     });
 
     it("can free a reference chain", async () => {
@@ -237,6 +231,23 @@ describe("dictionary", () => {
 	latch = null;
 	await testutil.forceGc();
 	expect(w.objectCount()).toBe(0);
+    });
+
+    it("can enumerate keys", () => {
+	let w = world.World.create(1024);
+	let obj = w.createDictionary();
+	obj.foo = 1;
+	obj.bar = 2;
+
+	let keys1 = Array.from(Object.keys(obj));
+	testutil.checkArray(keys1, "bar", "foo");
+
+	let keys2 = [];
+	for (let key in obj) {
+	    keys2.push(key);
+	}
+
+	testutil.checkArray(keys2, "bar", "foo");
     });
 
     it("multi-threaded single-dictionary stress test", async () => {
