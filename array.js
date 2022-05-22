@@ -19,6 +19,13 @@ function clamp(v, min, max) {
     }
 }
 
+// This class is only there so that we can pretend that this is the constructor of Array.
+// If we wanted to do it properly, we'd need to close over the World instance used so that the
+// constructor can in fact be used to create a new instance, but this is good enough to fool
+// Jasmine.
+class SharedArray {
+}
+
 function handlerApply(target, thisArg, args) {
     throw new Error("impossible");
 }
@@ -28,7 +35,7 @@ function handlerConstruct(target, args, newTarget) {
 }
 
 function handlerGetPrototypeOf(target) {
-    throw new Error("not supported");
+    return SharedArray.prototype;
 }
 
 function handlerSetPrototypeOf(target, prototype) {
@@ -40,7 +47,7 @@ function handlerDefineProperty(target, key, descriptor) {
 }
 
 function handlerGetOwnPropertyDescriptor(target, property) {
-    throw new Error("not implemented");
+    return target._getOwnPropertyDescriptor(property);
 }
 
 function handlerIsExtensible(target) {
@@ -52,6 +59,10 @@ function handlerPreventExtensions(target) {
 }
 
 function handlerGet(target, property, receiver) {
+    if (property === "constructor") {
+	return SharedArray;
+    }
+
     return target._get(property);
 }
 
@@ -68,7 +79,7 @@ function handlerHas(target, property) {
 }
 
 function handlerOwnKeys(target) {
-    throw new Error("not implemented");
+    return target._ownKeys();
 }
 
 const handlers = {
@@ -108,6 +119,7 @@ class Array extends sharedobject.SharedObject {
 	this._impl_at = this._asAtomic(this._atAtomic);
 	this._set = this._asAtomic(this._setAtomic);
 	this._getLength = this._asAtomic(this._getLengthAtomic);
+	this._getOwnPropertyDescriptor = this._asAtomic(this._getOwnPropertyDescriptorAtomic);
     }
 
     static _registerForWorld(privateSymbol, bufferType) {
@@ -535,6 +547,11 @@ class Array extends sharedobject.SharedObject {
 	    return this;
 	}
 
+	if (typeof(property) !== "string") {
+	    // Not even the non-existent auxiliary Dictionary supports Symbols
+	    return undefined;
+	}
+
 	let idx = parseInt(property);
 	if (!isNaN(idx)) {
 	    // We have successfully converted an integer to string and back again, but let's at
@@ -591,6 +608,42 @@ class Array extends sharedobject.SharedObject {
 	}
 
 	return true;
+    }
+
+    // This implementation is kinda stupid, but spec says that the result must be an Array, so
+    // a generator function does not work (I tried)
+    _ownKeys() {
+	let length = this._getLength();
+	let result = [];
+	for (let i = 0; i < length; i++) {
+	    result.push(i.toString());
+	}
+
+	return result;
+    }
+
+    _getOwnPropertyDescriptorAtomic(property) {
+	if (typeof(property) !== "string") {
+	    return undefined;
+	}
+
+	let length = this._getLengthAtomic();
+	let idx = Number.parseInt(property);
+	if (Number.isNaN(idx)) {
+	    return undefined;
+	}
+
+	// Exclude cases like "00" and "01" (not very logical, but hallowed be the spec)
+	if (idx.toString() !== property) {
+	    return undefined;
+	}
+
+	return {
+	    value: this._atAtomic(idx),
+	    writable: true,
+	    enumerable: true,
+	    configurable: true
+	};
     }
 }
 

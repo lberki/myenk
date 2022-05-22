@@ -344,6 +344,22 @@ describe("array", () => {
 	expect(i.next()).toEqual({value: undefined, done: true});
     });
 
+    it("can enumerate keys", () => {
+	let w = world.World.create(1024);
+	let a = w.createArray();
+	a.push(6, 5);
+
+	let keys1 = Array.from(Object.keys(a));
+	testutil.checkArray(keys1, "0",  "1");
+
+	let keys2 = [];
+	for (let key in a) {
+	    keys2.push(key);
+	}
+
+	testutil.checkArray(keys2, "0", "1");
+    });
+
     it("push/pop stress test", () => {
 	const NUM_WORKERS = 4;
 
