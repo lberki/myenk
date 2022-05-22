@@ -28,6 +28,13 @@ let BUFFER_TYPE = null;
 let ENCODER = new TextEncoder();
 let DECODER = new TextDecoder();
 
+// This class is only there so that we can pretend that this is the constructor of Dictionary.
+// If we wanted to do it properly, we'd need to close over the World instance used so that the
+// constructor can in fact be used to create a new instance, but this is good enough to fool
+// Jasmine.
+class SharedDictionary {
+}
+
 function handlerApply(target, thisArg, args) {
     throw new Error("impossible");
 }
@@ -37,7 +44,7 @@ function handlerConstruct(target, args, newTarget) {
 }
 
 function handlerGetPrototypeOf(target) {
-    return null;
+    return SharedDictionary.prototype;
 }
 
 function handlerSetPrototypeOf(target, prototype) {
@@ -61,6 +68,10 @@ function handlerPreventExtensions(target) {
 }
 
 function handlerGet(target, property, receiver) {
+    if (property === "constructor") {
+	return SharedDictionary;
+    }
+
     return target._get(property);
 }
 
