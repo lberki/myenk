@@ -1,7 +1,7 @@
 "use strict";
 
 let arena = require("./arena.js");
-let localobject = require("./localobject.js");
+let sharedobject = require("./sharedobject.js");
 let sync_internal = require("./sync_internal.js");
 
 const UINT32_MAX = 4294967295;
@@ -26,7 +26,7 @@ class LockHandle {
     }
 }
 
-class Lock extends localobject.LocalObject {
+class Lock extends sharedobject.SharedObject {
     constructor(_world, _arena, _ptr) {
 	super(_world, _arena, _ptr);
 
@@ -76,7 +76,7 @@ class LatchHandle {
     }
 }
 
-class Latch extends localobject.LocalObject {
+class Latch extends sharedobject.SharedObject {
     constructor(_world, _arena, _ptr) {
 	super(_world, _arena, _ptr);
 

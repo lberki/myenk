@@ -3,7 +3,7 @@
 const util = require("util");
 const debuglog = util.debuglog("array");
 
-let localobject = require("./localobject.js");
+let sharedobject = require("./sharedobject.js");
 
 // These are set when registering the object type for the world
 let PRIVATE = null;
@@ -91,7 +91,7 @@ const handlers = {
 // 32 bits: size
 // 32 bits: auxiliary array
 // rest: storage (8 bytes for each value)
-class Array extends localobject.LocalObject {
+class Array extends sharedobject.SharedObject {
     constructor(world, arena, ptr) {
 	super(world, arena, ptr);
 

@@ -19,7 +19,7 @@
 const util = require("util");
 const debuglog = util.debuglog("dictionary");
 
-let localobject = require("./localobject.js");
+let sharedobject = require("./sharedobject.js");
 
 // These are set when registering the object type for the world
 let PRIVATE = null;
@@ -103,7 +103,7 @@ const handlers = {
 // - Key (pointer to bytes)
 // - Type
 // - Value
-class Dictionary extends localobject.LocalObject {
+class Dictionary extends sharedobject.SharedObject {
     constructor(world, arena, ptr) {
 	super(world, arena, ptr);
     }

@@ -16,7 +16,7 @@ const util = require("util");
 const debuglog = util.debuglog("world");
 
 let arena = require("./arena.js");
-let localobject = require("./localobject.js");
+let sharedobject = require("./sharedobject.js");
 let dictionary = require("./dictionary.js");
 let array = require("./array.js");
 let sync = require("./sync.js");
@@ -436,9 +436,9 @@ class World {
 	this._addrToObject.set(addr, wr);
     }
 
-    _createLocalObjects(addr) {
+    _createObjectPair(addr) {
 	let ptr = this._arena.fromAddr(addr);
-	let type = localobject.LocalObject._getType(ptr.get32(1));
+	let type = sharedobject.SharedObject._getType(ptr.get32(1));
 	if (type <= 0 || type >= ObjectTypes.length) {
 	    throw new Error("invalid object type in shared buffer: " + type);
 	}
@@ -456,7 +456,7 @@ class World {
 	    }
 	}
 
-	let [priv, pub] = this._createLocalObjects(addr);
+	let [priv, pub] = this._createObjectPair(addr);
 	if (!forGc) {
 	    this._changeRefcount(priv._ptr, THREAD_RC_DELTA);
 	    this._registerObject(priv, pub, addr);
@@ -488,7 +488,7 @@ class World {
 	// TODO: This object creation is probably totally unnecessary, we have the address so all we
 	// need to do is to acquire the lock
 	let cs = new sync_internal.CriticalSection(
-	    this._arena.int32, localobject.LocalObject._criticalSectionAddr(objPtr._base));
+	    this._arena.int32, sharedobject.SharedObject._criticalSectionAddr(objPtr._base));
 
 	cs.run(() => {
 	    let oldRefcount = objPtr.get32(3);
@@ -530,7 +530,7 @@ class World {
 		continue;
 	    }
 
-	    let [obj, _] = this._createLocalObjects(addr);
+	    let [obj, _] = this._createObjectPair(addr);
 	    obj._criticalSection.run(() => {
 		if (obj._ptr.get32(3) >= THREAD_RC_DELTA) {
 		    roots.push(obj);
@@ -563,7 +563,7 @@ class World {
 		for (let addr of obj._references()) {
 		    // TODO: it's probably quite wasteful to always create a new local object even
 		    // though it's already been visited
-		    let [priv, _] = this._createLocalObjects(addr);
+		    let [priv, _] = this._createObjectPair(addr);
 		    debuglog("enqueuing edge @ " + obj._ptr._base + " -> @ " + addr);
 		    queue.push(priv);
 		}
@@ -579,7 +579,7 @@ class World {
 		continue;
 	    }
 
-	    let [obj, _] = this._createLocalObjects(addr);
+	    let [obj, _] = this._createObjectPair(addr);
 	    obj._criticalSection.run(() => {
 		let rc = obj._ptr.get32(3);
 		if (rc === 0) {
@@ -655,5 +655,5 @@ class World {
     }
 }
 
-localobject.setPrivateSymbol(PRIVATE);
+sharedobject.setPrivateSymbol(PRIVATE);
 exports.World = World;

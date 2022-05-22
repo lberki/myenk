@@ -1,7 +1,7 @@
 "use strict";
 
 const util = require("util");
-const debuglog = util.debuglog("localobject");
+const debuglog = util.debuglog("sharedobject");
 
 let arena = require("./arena.js");
 let sync_internal = require("./sync_internal.js");
@@ -32,7 +32,7 @@ let DECODER = new TextDecoder();
 // - Object lock
 // - Reference count (both in object graph and from threads), lowest bit: GC mark
 
-class LocalObject {
+class SharedObject {
     constructor(_world, _arena, _ptr) {
 	this._world = _world;
 	this._arena = _arena;
@@ -40,14 +40,14 @@ class LocalObject {
 
 	this._criticalSection = new sync_internal.CriticalSection(
 	    _arena.int32,
-	    LocalObject._criticalSectionAddr(_ptr._base)
+	    SharedObject._criticalSectionAddr(_ptr._base)
 	);
     }
 
     _isInstance(obj, expectedType) {
 	let priv = obj[PRIVATE];
 	if (priv === undefined) {
-	    // Not a LocalObject
+	    // Not a SharedObject
 	    return false;
 	}
 
@@ -56,7 +56,7 @@ class LocalObject {
 	    return false;
 	}
 
-	let actualType = LocalObject._getType(priv._ptr.get32(1));
+	let actualType = SharedObject._getType(priv._ptr.get32(1));
 	return expectedType === actualType;
     }
 
@@ -85,7 +85,7 @@ class LocalObject {
     }
 
     _setId(id) {
-	let type = LocalObject._getType(this._ptr.get32(1));
+	let type = SharedObject._getType(this._ptr.get32(1));
 	this._ptr.set32(1, (id << OBJECT_TYPE_BITS) + type);
     }
 
@@ -211,5 +211,5 @@ function setPrivateSymbol(p) {
 
 // TODO: this is for use by World, should probably be a little more private
 exports.setPrivateSymbol = setPrivateSymbol;
-exports.LocalObject = LocalObject;
+exports.SharedObject = SharedObject;
 exports.MAX_OBJECT_TYPE = 0xf;
