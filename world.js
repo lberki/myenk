@@ -428,10 +428,6 @@ class World {
 	});
     }
 
-    _deregisterObject(addr) {
-	this._addrToObject.delete(addr);
-    }
-
     _registerObject(priv, pub, addr) {
 	let wr = new WeakRef(pub);
 	this._registry.register(pub, priv);
