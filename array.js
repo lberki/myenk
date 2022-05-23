@@ -113,11 +113,8 @@ class Array extends sharedobject.SharedObject {
 
 	// Implementations of Array methods
 	this._impl_pop = this._asAtomic(this._popAtomic);
-	this._impl_push = this._asAtomic(this._pushAtomic);
 	this._impl_shift = this._asAtomic(this._shiftAtomic);
-	this._impl_unshift = this._asAtomic(this._unshiftAtomic);
 	this._impl_at = this._asAtomic(this._atAtomic);
-	this._set = this._asAtomic(this._setAtomic);
 	this._getLength = this._asAtomic(this._getLengthAtomic);
 	this._getOwnPropertyDescriptor = this._asAtomic(this._getOwnPropertyDescriptorAtomic);
     }
@@ -258,26 +255,30 @@ class Array extends sharedobject.SharedObject {
 	return this._valueFromBytes(type, bytes);
     }
 
-    _pushAtomic(...args) {
-	let oldSize;
+    _impl_push(...args) {
+	let values = this._toValues(...args);
 
-	let storePtr = this._getStore();
-	if (storePtr === null) {
-	    oldSize = 0;
-	} else {
-	    oldSize = this._getSize(storePtr);
-	}
+	this._criticalSection.run(() => {
+	    let oldSize;
 
-	let newSize = oldSize + args.length;
-	storePtr = this._reallocMaybe(newSize);
+	    let storePtr = this._getStore();
+	    if (storePtr === null) {
+		oldSize = 0;
+	    } else {
+		oldSize = this._getSize(storePtr);
+	    }
 
-	for (let i = 0; i < args.length; i++) {
-	    let [type, bytes] = this._valueToBytes(args[i]);
-	    storePtr.set32(2 + 2 * (oldSize + i), type);
-	    storePtr.set32(3 + 2 * (oldSize + i), bytes);
-	}
+	    let newSize = oldSize + args.length;
+	    storePtr = this._reallocMaybe(newSize);
 
-	storePtr.set32(0, newSize);
+	    for (let i = 0; i < args.length; i++) {
+		let [type, bytes] = values[i];
+		storePtr.set32(2 + 2 * (oldSize + i), type);
+		storePtr.set32(3 + 2 * (oldSize + i), bytes);
+	    }
+
+	    storePtr.set32(0, newSize);
+	});
     }
 
     _popAtomic() {
@@ -305,31 +306,35 @@ class Array extends sharedobject.SharedObject {
 	return result;
     }
 
-    _unshiftAtomic(...args) {
-	let oldSize;
-	let storePtr = this._getStore();
-	if (storePtr === null) {
-	    oldSize = 0;
-	} else {
-	    oldSize = this._getSize(storePtr);
-	}
+    _impl_unshift(...args) {
+	let values = this._toValues(...args);
 
-	// TODO: this potentially moves memory *twice* which could be avoided by a tiny bit more
-	// complicated reallocation logic, but I am optimizing for development time here
-	let newSize = oldSize + args.length;
-	storePtr = this._reallocMaybe(newSize);
+	this._criticalSection.run(() => {
+	    let oldSize;
+	    let storePtr = this._getStore();
+	    if (storePtr === null) {
+		oldSize = 0;
+	    } else {
+		oldSize = this._getSize(storePtr);
+	    }
 
-	for (let i = oldSize * 2 - 1; i >= 0; i--) {
-	    storePtr.set32(args.length * 2 + 2 + i, storePtr.get32(2 + i));
-	}
+	    // TODO: this potentially moves memory *twice* which could be avoided by a tiny bit more
+	    // complicated reallocation logic, but I am optimizing for development time here
+	    let newSize = oldSize + args.length;
+	    storePtr = this._reallocMaybe(newSize);
 
-	for (let i = 0; i < args.length; i++) {
-	    let [type, bytes] = this._valueToBytes(args[i]);
-	    storePtr.set32(2 + i * 2, type);
-	    storePtr.set32(3 + i * 2, bytes);
-	}
+	    for (let i = oldSize * 2 - 1; i >= 0; i--) {
+		storePtr.set32(args.length * 2 + 2 + i, storePtr.get32(2 + i));
+	    }
 
-	storePtr.set32(0, newSize);
+	    for (let i = 0; i < args.length; i++) {
+		let [type, bytes] = values[i];
+		storePtr.set32(2 + i * 2, type);
+		storePtr.set32(3 + i * 2, bytes);
+	    }
+
+	    storePtr.set32(0, newSize);
+	});
     }
 
     _shiftAtomic() {
@@ -492,27 +497,32 @@ class Array extends sharedobject.SharedObject {
 	console.log("CONTENTS: " + contents);
     }
 
-    _impl_splice(start, deleteCount, ...items) {
-	let itemValues = [];
+    _toValues(...items) {
+	let result = [];
 	let ok = false;
 
 	try {
 	    this._world._withMutation(() => {
 		for (let item of items) {
-		    itemValues.push(this._valueToBytes(item));
+		    result.push(this._valueToBytes(item));
 		}
 	    });
 	    ok = true;
 	} finally {
 	    if (!ok) {
-		console.log("wtf");
 		this._world._withMutation(() => {
-		    for (let [type, bytes] of itemValues) {
+		    for (let [type, bytes] of result) {
 			this._freeValue(type, bytes);
 		    }
 		});
 	    }
 	}
+
+	return result;
+    }
+
+    _impl_splice(start, deleteCount, ...items) {
+	let itemValues = this._toValues(...items);
 
 	// This can signal an OOM but we don't care much about refcounts after an OOM, at least for
 	// the time being
@@ -583,7 +593,7 @@ class Array extends sharedobject.SharedObject {
     _getNonIndexAtomic(property) {
     }
 
-    _setAtomic(property, value) {
+    _set(property, value) {
 	let idx = parseInt(property);
 	if (isNaN(idx) || idx < 0) {
 	    // TODO: according to spec, we should be able to set arbitrary keys even though it requires
@@ -592,20 +602,30 @@ class Array extends sharedobject.SharedObject {
 	}
 
 	// Set numeric index
-	let storePtr = this._reallocMaybe(idx + 1);
 
-	let type = storePtr.get32(2 + 2 * idx);
-	let bytes = storePtr.get32(3 + 2 * idx);
-	this._freeValue(type, bytes);
+	let newType, newValue;
 
-	[type, bytes] = this._valueToBytes(value);
-	storePtr.set32(2 + 2 * idx, type);
-	storePtr.set32(3 + 2 * idx, bytes);
+	this._world._withMutation(() => {
+	    [newType, newValue] = this._valueToBytes(value);
+	});
 
-	let oldSize = storePtr.get32(0);
-	if (oldSize < idx + 1) {
-	    storePtr.set32(0, idx + 1);
-	}
+	this._world._withMutation(() => {
+	    this._criticalSection.run(() => {
+		let storePtr = this._reallocMaybe(idx + 1);
+
+		let oldType = storePtr.get32(2 + 2 * idx);
+		let oldValue = storePtr.get32(3 + 2 * idx);
+		this._freeValue(oldType, oldValue);
+
+		storePtr.set32(2 + 2 * idx, newType);
+		storePtr.set32(3 + 2 * idx, newValue);
+
+		let oldSize = storePtr.get32(0);
+		if (oldSize < idx + 1) {
+		    storePtr.set32(0, idx + 1);
+		}
+	    });
+	});
 
 	return true;
     }

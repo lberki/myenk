@@ -224,18 +224,18 @@ class Dictionary extends sharedobject.SharedObject {
 
     _set(property, value) {
 	return this._world._withMutation(() => {
+	    let [bufferType, bufferValue] = this._valueToBytes(value);
+
 	    return this._criticalSection.run(() => {
-		return this._setInMutation(property, value);
+		return this._setInMutation(property, bufferType, bufferValue);
 	    });
 	});
     }
 
-    _setInMutation(property, value) {
+    _setInMutation(property, bufferType, bufferValue) {
 	if (typeof(property) !== "string") {
 	    throw new Error("not implemented");
 	}
-
-	let [bufferType, bufferValue] = this._valueToBytes(value);
 
 	let propBytes = ENCODER.encode(property);
 	let [_, cellPtr] = this._findProperty(propBytes);
