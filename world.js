@@ -18,6 +18,7 @@ const debuglog = util.debuglog("world");
 let arena = require("./arena.js");
 let sharedobject = require("./sharedobject.js");
 let dictionary = require("./dictionary.js");
+let localobject = require("./localobject.js");
 let array = require("./array.js");
 let sync = require("./sync.js");
 let sync_internal = require("./sync_internal.js");
@@ -38,6 +39,7 @@ const ObjectTypes = [
     null,  // marker so that zero is not a valid object type in RAM,
     dictionary.Dictionary,
     array.Array,
+    localobject.LocalObject,
     sync.Latch,
     sync.Lock
 ];
