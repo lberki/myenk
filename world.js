@@ -63,7 +63,8 @@ class World {
     constructor(a, header) {
 	this._arena = a;
 	this._header = header;
-	this._addrToObject = new Map();
+	this._addrToPublic = new Map();
+	this._localToAddr = new Map();
 	this._registry = new FinalizationRegistry(priv => { this._dispose(priv); });
 	this._mutation = null;
 	this._criticalSection = new sync_internal.CriticalSection(
@@ -110,7 +111,7 @@ class World {
 
 	let result = new World(a, header);
 	result._withMutation(() => {
-	    result._root = result._localFromAddr(header.get32(HEADER.ROOT));
+	    result._root = result._publicFromAddr(header.get32(HEADER.ROOT));
 	});
 
 	return result;
@@ -421,7 +422,7 @@ class World {
     }
 
     _dispose(priv) {
-	this._addrToObject.delete(priv._ptr._base);
+	this._addrToPublic.delete(priv._ptr._base);
 
 	this._withMutation(() => {
 	    this._changeRefcount(priv._ptr, -THREAD_RC_DELTA, priv);
@@ -431,7 +432,7 @@ class World {
     _registerObject(priv, pub, addr) {
 	let wr = new WeakRef(pub);
 	this._registry.register(pub, priv);
-	this._addrToObject.set(addr, wr);
+	this._addrToPublic.set(addr, wr);
     }
 
     _createObjectPair(addr) {
@@ -444,8 +445,8 @@ class World {
 	return ObjectTypes[type]._create(this, this._arena, ptr);
     }
 
-    _localFromAddr(addr, forGc=false) {
-	let wr = this._addrToObject.get(addr);
+    _publicFromAddr(addr, forGc=false) {
+	let wr = this._addrToPublic.get(addr);
 	if (wr !== undefined) {
 	    // Do not call deref() twice in case Javascript GC happens in between
 	    let existing = wr.deref();
@@ -503,7 +504,7 @@ class World {
 	    if (priv === null) {
 		// We need to have a local object so that we can properly deallocate the data
 		// structures in the arena allocated by the world object
-		let pub = this._localFromAddr(objPtr._base, true);
+		let pub = this._publicFromAddr(objPtr._base, true);
 		priv = pub[PRIVATE];
 	    }
 

@@ -133,7 +133,7 @@ class SharedObject {
 	    // Performance is abysmal anyway.
 	    return bytes < 2147483648 ? bytes : bytes - 4294967296;
 	} else if (type == ValueType.OBJECT) {
-	    return this._world._localFromAddr(bytes);
+	    return this._world._publicFromAddr(bytes);
 	} else if (type == ValueType.STRING) {
 	    if (bytes === 0) {
 		return "";
