@@ -250,7 +250,7 @@ describe("array", () => {
 	a2[0] = w.createDictionary();
 
 	let left = w.left();
-	expect(() => { a1.concat(a2, {}); }).toThrow();
+	expect(() => { a1.concat(a2, new Symbol()); }).toThrow();
 
 	// Checks are done in this sequence because object allocation may result in allocating
 	// memory for the object list; so we can verify that concat() frees all the memory it

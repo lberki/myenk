@@ -183,6 +183,11 @@ class SharedObject {
 		valuePtr.asUint8().set(stringBytes);
 		bytes = valuePtr._base;
 	    }
+	} else if (typeof(value) === "object") {
+	    let priv = this._world._registerLocalObject(value);
+	    this._world._addWorldRef(priv._ptr);
+	    type = ValueType.OBJECT;
+	    bytes = priv._ptr._base;
 	} else {
 	    throw new Error("not implemented");
 	}

@@ -12,10 +12,41 @@ let BUFFER_TYPE = null;
 // - Special-case LocalObject in World and intern the object there before calling _init()
 // - check the bimap in this._world if false, if not found, return a stub "bad idea" object
 // - gc: on explicit call to a method on World. The bimap must keep a reference to the object
+
+function handlerInvalid(...args) {
+    throw new Error("attempted access to object in other thread");
+}
+
+function handlerGet(target, property) {
+    if (property === PRIVATE) {
+	return target;
+    }
+
+    handlerInvalid(target, property);
+}
+
+const handlers = {
+    apply: handlerInvalid,
+    construct: handlerInvalid,
+    getPrototypeOf: handlerInvalid,
+    setPrototypeOf: handlerInvalid,
+    defineProperty: handlerInvalid,
+    getOwnPropertyDescriptor: handlerInvalid,
+    isExtensible: handlerInvalid,
+    preventExtensions: handlerInvalid,
+    get: handlerGet,
+    set: handlerInvalid,
+    deleteProperty: handlerInvalid,
+    has: handlerInvalid,
+    ownKeys: handlerInvalid,
+};
+
+// Memory layout:
+// 32 bits: originating thread
+// 32 bits: === 1 if object has been garbage collected
 class LocalObject extends sharedobject.SharedObject {
     constructor(_world, _arena, _ptr) {
 	super(_world, _arena, _ptr);
-	// TODO
     }
 
     static _registerForWorld(privateSymbol, bufferType) {
@@ -23,15 +54,25 @@ class LocalObject extends sharedobject.SharedObject {
 	BUFFER_TYPE = bufferType;
     }
 
+    static _create(world, arena, ptr) {
+	let priv = new LocalObject(world, arena, ptr);
+	let pub = new Proxy(priv, handlers);
+	return [priv, pub];
+    }
+
     _init() {
 	super._init();
 	this._setType(BUFFER_TYPE);
-	// TODO
+	let storePtr = this._arena.alloc(8);
+	this._ptr.set32(0, storePtr._base);
+	storePtr.set32(0, 0);
+	storePtr.set32(1, 0);
     }
 
-    static _create(world, arena, ptr) {
-	let priv = new LocalObject();
-	return [null, priv];  // [public, private]
+    _free() {
+	let storePtr = this._arena.fromAddr(this._ptr.get32(0));
+	this._arena.free(storePtr);
+	super._free();
     }
 }
 
