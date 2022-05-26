@@ -1,9 +1,9 @@
 "use strict";
 
 function parallelAllocStressTest(w, t, param) {
-    let latch = w.root()["latch_" + param];
     let a = w._arena;
 
+    w.root().worldsCreated.dec();
     w.root().start.wait();
 
     for (let i = 0; i < 1000; i++) {
@@ -16,7 +16,7 @@ function parallelAllocStressTest(w, t, param) {
 	a.free(b2);
     }
 
-    latch.dec();
+    w.root().workersDone.dec();
 }
 
 exports.parallelAllocStressTest = parallelAllocStressTest;

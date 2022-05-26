@@ -255,6 +255,8 @@ describe("dictionary", () => {
 
 	let w = world.World.create(10240);
 	w.root().start = w.createLatch(1);
+	w.root().worldsCreated = w.createLatch(NUM_WORKERS);
+	w.root().workersDone = w.createLatch(NUM_WORKERS);
 
 	let workers = new Array();
 	for (let i = 0; i < NUM_WORKERS; i++) {
@@ -264,20 +266,17 @@ describe("dictionary", () => {
 		i, []));
 	}
 
+	w.root().worldsCreated.wait();
 	let leftBefore = w.left();
 	let objectCountBefore = w.objectCount();
 	w.root().obj = w.createDictionary();
 
 	w.root().start.dec();
-
-	for (let i = 0; i < NUM_WORKERS; i++) {
-	    w.root()["latch_" + i].wait();
-	}
+	w.root().workersDone.wait();
 
 	delete w.root().obj;
 	await testutil.forceGc();
 	expect(w.objectCount()).toBe(objectCountBefore);
-	// TODO: account for dumpsters in a sane manner
-	expect(w.left()).toBe(leftBefore - NUM_WORKERS * 16);
+	expect(w.left()).toBe(leftBefore);
     });
 });

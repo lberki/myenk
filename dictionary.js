@@ -1,8 +1,7 @@
 "use strict";
 
 // TODO:
-// - Account for dumpster space in parallel stress tests in a sane manner
-// - Implement "objects to be disposed on thread X" functionality
+// - Add a test case for more than one object in dumpster
 // - Add a test case to make sure that free() for LocalObject works
 // - Add a test case for the "access from other threads raises exception" functionality
 // - Add a test case for what happens when the shared object is GCd but the local object is not

@@ -202,6 +202,8 @@ describe("arena", () => {
 
 	let w = world.World.create(2048);
 	w.root().start = w.createLatch(1);
+	w.root().worldsCreated = w.createLatch(NUM_WORKERS);
+	w.root().workersDone = w.createLatch(NUM_WORKERS);
 
 	let workers = new Array();
 	for (let i = 0; i < NUM_WORKERS; i++) {
@@ -211,16 +213,12 @@ describe("arena", () => {
 		i, []));
 	}
 
+	w.root().worldsCreated.wait();
 	let before = w._arena.left();
-
 	w.root().start.dec();
 
-	for (let i = 0; i < NUM_WORKERS; i++) {
-	    w.root()["latch_" + i].wait();
-	}
-
-	// TODO: account for dumpsters in a sane manner
-	expect(w._arena.left()).toBe(before - NUM_WORKERS * 16);
+	w.root().workersDone.wait();
+	expect(w._arena.left()).toBe(before);
 	w._arena.sanityCheck();
     });
 

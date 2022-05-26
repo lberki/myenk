@@ -3,11 +3,11 @@
 let testutil = require("./testutil.js");
 
 async function singleDictionaryStressTest(w, t, param) {
-    let obj = w.root().obj;
-    let latch = w.root()["latch_" + param];
-    let rnd = new testutil.PRNG(param);
-
+    w.root().worldsCreated.dec();
     w.root().start.wait();
+
+    let obj = w.root().obj;
+    let rnd = new testutil.PRNG(param);
 
     try {
 	for (let i = 0; i < 500; i++) {
@@ -29,7 +29,7 @@ async function singleDictionaryStressTest(w, t, param) {
     } finally {
 	obj = null;
 	await testutil.forceGc();
-	latch.dec();
+	w.root().workersDone.dec();
     }
 }
 
