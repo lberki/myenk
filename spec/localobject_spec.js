@@ -51,6 +51,7 @@ describe("localobject", () => {
 	    ["removed"]);
 	t.wait("removed");
 
+	w.emptyDumpster();
 	await testutil.forceGc();
 	expect(w.objectCount()).toBe(2);  // Test latch dictionary + one latch
 	expect(flag).toBeTrue();

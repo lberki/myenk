@@ -77,6 +77,7 @@ class World {
 	this._dumpster = this._arena.alloc(8);
 	this._dumpster.set32(0, 0);
 	this._dumpster.set32(1, 0);
+	debuglog("allocated dumpster @ " + this._dumpster._base);
     }
 
     static create(size) {
@@ -323,7 +324,8 @@ class World {
 		    // object, but once GC is implemented, GC might catch it on another thread and
 		    // then that must be protected against.
 		    objectsFreed += 1;
-		    debuglog("freeing object ID " + priv._getId() + " with object @ " + priv._ptr._base);
+		    debuglog("marking object ID " + priv._getId() + " with object @ " +
+			     priv._ptr._base + " as freeable");
 		    objectsToFree.push({
 			id: priv._getId(),
 			ptr: priv._ptr,
@@ -359,10 +361,13 @@ class World {
     }
 
     _freeObjectLocked(id, ptr, dumpsterAddr) {
+	this._objectIdToFreelist(id);
+
 	if (dumpsterAddr === 0) {
-	    this._objectIdToFreelist(id);
+	    debuglog("freeing object @ "+ ptr._base);
 	    this._arena.free(ptr);
 	} else {
+	    debuglog("moving object @ " + ptr._base + " to dumpster @ " + dumpsterAddr);
 	    this._addToDumpsterLocked(ptr, dumpsterAddr);
 	}
     }
@@ -569,13 +574,13 @@ class World {
 	});
     }
 
-    _emptyDumpster() {
+    emptyDumpster() {
 	let addr = this._dumpster.get32(0);
 
-	while (addr !== null) {
+	while (addr !== 0) {
+	    debuglog("freeing object @ " + addr + " from dumpster");
 	    let ptr = this._arena.fromAddr(addr);
-	    let obj = new localobject.LocalObject(this, this._arena, ptr);
-	    let next = obj._nextDumpsterAddr();
+	    let next = ptr.get32(0);
 	    let pub = this._addrToPublic.get(addr).deref();
 	    let priv = this._localToPrivate.get(pub);
 	    if (priv === null) {
@@ -585,7 +590,6 @@ class World {
 	    // The object must be unreferenced and local objects don't reference any shared object
 	    // so all we need to do is to free the shared storage and remove the local references
 	    // to the wrapped object
-	    obj._free();
 	    this._arena.free(ptr);
 	    this._localToPrivate.delete(pub);
 	    this._addrToPublic.delete(addr);

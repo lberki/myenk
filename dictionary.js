@@ -3,12 +3,11 @@
 // TODO:
 // - Account for dumpster space in parallel stress tests in a sane manner
 // - Implement "objects to be disposed on thread X" functionality
-// - Add a test case that verifies that objects *can* be garbage collected after
-//   foreign threads lose references to them
 // - Add a test case to make sure that free() for LocalObject works
 // - Add a test case for the "access from other threads raises exception" functionality
 // - Add a test case for what happens when the shared object is GCd but the local object is not
 // - Figure out a way to re-enable the "refcount cannot be 0" assertion
+// - Write documentation about emptyDumpster() (or make the method unnecessary)
 
 // - Implement various methods on Dictionary
 // - Implement symbol values

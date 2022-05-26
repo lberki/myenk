@@ -73,15 +73,8 @@ class LocalObject extends sharedobject.SharedObject {
     }
 
     _dumpsterAddr() {
-	return 0;  // TODO: remove, test
-
 	let storePtr = this._arena.fromAddr(this._ptr.get32(0));
 	return storePtr.get32(0);
-    }
-
-    _nextDumpsterAddr() {
-	let storePtr = this._arena.fromAddr(this._ptr.get32(0));
-	return storePtr.get32(1);
     }
 
     _free() {
