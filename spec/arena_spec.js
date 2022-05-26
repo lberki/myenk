@@ -219,7 +219,8 @@ describe("arena", () => {
 	    w.root()["latch_" + i].wait();
 	}
 
-	expect(w._arena.left()).toBe(before);
+	// TODO: account for dumpsters in a sane manner
+	expect(w._arena.left()).toBe(before - NUM_WORKERS * 16);
 	w._arena.sanityCheck();
     });
 

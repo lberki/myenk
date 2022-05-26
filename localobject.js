@@ -42,11 +42,13 @@ const handlers = {
 };
 
 // Memory layout:
-// 32 bits: originating thread
-// 32 bits: === 1 if object has been garbage collected
+// 32 bits: originating thread (by dumpster address)
+// 32 bits: === 1 if object has not been garbage collected
 class LocalObject extends sharedobject.SharedObject {
     constructor(_world, _arena, _ptr) {
 	super(_world, _arena, _ptr);
+
+	this._ownThread = false;
     }
 
     static _registerForWorld(privateSymbol, bufferType) {
@@ -63,14 +65,28 @@ class LocalObject extends sharedobject.SharedObject {
     _init() {
 	super._init();
 	this._setType(BUFFER_TYPE);
+	this._ownThread = true;
 	let storePtr = this._arena.alloc(8);
 	this._ptr.set32(0, storePtr._base);
-	storePtr.set32(0, 0);
-	storePtr.set32(1, 0);
+	storePtr.set32(0, this._world._dumpster._base);
+	storePtr.set32(1, 1);
+    }
+
+    _dumpsterAddr() {
+	return 0;  // TODO: remove, test
+
+	let storePtr = this._arena.fromAddr(this._ptr.get32(0));
+	return storePtr.get32(0);
+    }
+
+    _nextDumpsterAddr() {
+	let storePtr = this._arena.fromAddr(this._ptr.get32(0));
+	return storePtr.get32(1);
     }
 
     _free() {
 	let storePtr = this._arena.fromAddr(this._ptr.get32(0));
+	let dumpsterAddr = storePtr.get32(0);
 	this._arena.free(storePtr);
 	super._free();
     }

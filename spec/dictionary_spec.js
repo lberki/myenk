@@ -277,6 +277,7 @@ describe("dictionary", () => {
 	delete w.root().obj;
 	await testutil.forceGc();
 	expect(w.objectCount()).toBe(objectCountBefore);
-	expect(w.left()).toBe(leftBefore);
+	// TODO: account for dumpsters in a sane manner
+	expect(w.left()).toBe(leftBefore - NUM_WORKERS * 16);
     });
 });

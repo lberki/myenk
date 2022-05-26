@@ -72,6 +72,11 @@ class World {
 	    (header._base + arena.BLOCK_HEADER_SIZE) / 4 + 3);
 	this.sanityCheck = this._criticalSection.wrap(this, this._sanityCheckLocked);
 	this.gc = this._criticalSection.wrap(this, this._gcLocked);
+
+	// Every thread gets its own dumpster so it's appropriate to allocate it in the constructor
+	this._dumpster = this._arena.alloc(8);
+	this._dumpster.set32(0, 0);
+	this._dumpster.set32(1, 0);
     }
 
     static create(size) {
@@ -247,13 +252,13 @@ class World {
 	debuglog("allocated LocalObject @ " + ptr._base);
 
 	[priv, ] = localobject.LocalObject._create(this, this._arena, ptr);
-	// TODO: remove dispose(). The object cannot be GCd until other threads might hold a
-	// reference to it.
-	this._registerObject(priv, obj, ptr._base);  // TODO: Change behavior on dispose.
+
+	// We don't use _registerObject so that we don't need to deal with _dispose()
+	this._addrToPublic.set(ptr._base, new WeakRef(obj));
 
 	// Initialization is a little different: we don't pass any arguments since there is nothing
-	// other threads can usefully know about this object. Eventually, we may want a thread ID
-	// and some sort of object ID so that it's easier to track down illegal accesses?
+	// other threads can usefully know about this object. Calling this method is a signal that
+	// the LocalObject instance refers to an object that lives on this thread.
 	priv._init();
 
 	// Differently from every other object, we do *not* add a thread reference to them. This is
@@ -319,7 +324,10 @@ class World {
 		    // then that must be protected against.
 		    objectsFreed += 1;
 		    debuglog("freeing object ID " + priv._getId() + " with object @ " + priv._ptr._base);
-		    objectsToFree.push({ "id": priv._getId(), "ptr": priv._ptr});
+		    objectsToFree.push({
+			id: priv._getId(),
+			ptr: priv._ptr,
+			dumpsterAddr: priv._dumpsterAddr()});
 
 		    // This does not free the object header. This is so that pointer in the global
 		    // object list stays valid. It will be freed when we deallocate the object IDs
@@ -337,8 +345,7 @@ class World {
 		    this._header.get32(HEADER.OBJECT_COUNT) - objectsFreed);
 
 		for (let obj of objectsToFree) {
-		    this._objectIdToFreelist(obj.id);
-		    this._arena.free(obj.ptr);
+		    this._freeObjectLocked(obj.id, obj.ptr, obj.dumpsterAddr);
 		}
 
 		if (EXTENDED_SANITY_CHECKS) {
@@ -348,6 +355,15 @@ class World {
 
 	    this._toFree = null;
 	    this._mutation = null;
+	}
+    }
+
+    _freeObjectLocked(id, ptr, dumpsterAddr) {
+	if (dumpsterAddr === 0) {
+	    this._objectIdToFreelist(id);
+	    this._arena.free(ptr);
+	} else {
+	    this._addToDumpsterLocked(ptr, dumpsterAddr);
 	}
     }
 
@@ -457,6 +473,10 @@ class World {
     }
 
     _dispose(priv) {
+	if (priv instanceof localobject.LocalObject && priv._ownThread) {
+	    // These objects are not registered in the FinalizationRegistry
+	    throw new Error("impossible");
+	}
 	this._addrToPublic.delete(priv._ptr._base);
 
 	this._withMutation(() => {
@@ -549,6 +569,39 @@ class World {
 	});
     }
 
+    _emptyDumpster() {
+	let addr = this._dumpster.get32(0);
+
+	while (addr !== null) {
+	    let ptr = this._arena.fromAddr(addr);
+	    let obj = new localobject.LocalObject(this, this._arena, ptr);
+	    let next = obj._nextDumpsterAddr();
+	    let pub = this._addrToPublic.get(addr).deref();
+	    let priv = this._localToPrivate.get(pub);
+	    if (priv === null) {
+		throw new Error("impossible");
+	    }
+
+	    // The object must be unreferenced and local objects don't reference any shared object
+	    // so all we need to do is to free the shared storage and remove the local references
+	    // to the wrapped object
+	    obj._free();
+	    this._arena.free(ptr);
+	    this._localToPrivate.delete(pub);
+	    this._addrToPublic.delete(addr);
+	    addr = next;
+	}
+
+	this._dumpster.set32(0, 0);
+    }
+
+    _addToDumpsterLocked(objPtr, dumpsterAddr) {
+	let dumpsterPtr = this._arena.fromAddr(dumpsterAddr);
+	let oldHead = dumpsterPtr.get32(0);
+	objPtr.set32(0, oldHead);
+	dumpsterPtr.set32(0, objPtr._base);
+    }
+
     _gcLocked() {
 	// GC is the only time when a thread holds more than one lock (the world lock + a single
 	// object lock)
@@ -638,8 +691,7 @@ class World {
 		    obj._free();
 		});
 
-		this._objectIdToFreelist(obj._getId());
-		this._arena.free(obj._ptr);
+		this._freeObjectLocked(obj._getId(), obj._ptr, obj._dumpsterAddr());
 		objectsFreed += 1;
 	    });
 	}
