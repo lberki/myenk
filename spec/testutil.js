@@ -50,10 +50,13 @@ function nextEvent() {
     });
 }
 
-// I have no idea why *two* event loop iterations need to happen before objects with weak references
-// to them are finalized and their FinalizationRegistry handlers are called but that's demonstrably
-// the case, at least in Node v16.14.2.
+// I have no idea why *three* event loop iterations need to happen before objects with weak
+// references to them are finalized and their FinalizationRegistry handlers are called but two are
+// definitely needed, at least in Node v16.14.2, and three was necessary in one test case. The more
+// the merrier!
 async function forceGc() {
+    await nextEvent();
+    global.gc();
     await nextEvent();
     global.gc();
     await nextEvent();

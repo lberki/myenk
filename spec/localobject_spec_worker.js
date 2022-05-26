@@ -19,5 +19,11 @@ function keepAliveTest(w, t) {
     t.done("replaced");
 }
 
+function otherThreadDeletesReferenceTest(w, t) {
+    delete w.root().foo;
+    t.done("removed");
+}
+
 exports.smokeTest = smokeTest;
 exports.keepAliveTest = keepAliveTest;
+exports.otherThreadDeletesReferenceTest = otherThreadDeletesReferenceTest;

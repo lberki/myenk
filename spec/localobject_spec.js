@@ -32,4 +32,28 @@ describe("localobject", () => {
 	expect(obj.bar).toBe("qux");
     });
 
+    it("garbage collects object when other thread deletes reference", async () => {
+	let w = world.World.create(1024);
+	let obj = { bar: "qux" };
+	let flag = false;
+	let registry = new FinalizationRegistry(() => { flag = true; });
+	registry.register(obj, null);
+	w.root().foo = obj;
+	obj = null;
+
+	await testutil.forceGc();
+	expect(w.objectCount()).toBe(1);  // The object just created
+	expect(flag).toBeFalse();
+
+	// The latch is handled explicitly so that we keep object count under control
+	let t = testutil.spawnWorker(
+	    w, "localobject_spec_worker.js", "otherThreadDeletesReferenceTest", null,
+	    ["removed"]);
+	t.wait("removed");
+
+	await testutil.forceGc();
+	expect(w.objectCount()).toBe(2);  // Test latch dictionary + one latch
+	expect(flag).toBeTrue();
+    });
+
 });

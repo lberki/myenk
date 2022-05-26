@@ -2,6 +2,7 @@
 
 // TODO:
 // - Fix dispose()
+// - Implement "objects to be disposed on thread X" functionality
 // - Add a test case that verifies that objects *can* be garbage collected after
 //   foreign threads lose references to them
 // - Add a test case to make sure that free() for LocalObject works
