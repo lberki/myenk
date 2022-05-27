@@ -664,7 +664,8 @@ class World {
 	}
 
 	// Iterate over every object and free those without the GC mark
-	let objectsFreed = 0;
+	let objectsFreed = [];
+
 	for (let i = 0; i < this._header.get32(HEADER.OBJLIST_SIZE); i++) {
 	    let addr = objlist.get32(i);
 	    if ((addr & 1) == 1) {
@@ -695,14 +696,17 @@ class World {
 		    obj._free();
 		});
 
-		this._freeObjectLocked(obj._getId(), obj._ptr, obj._dumpsterAddr());
-		objectsFreed += 1;
+		objectsFreed.push(obj);
 	    });
+	}
+
+	for (let obj of objectsFreed) {
+	    this._freeObjectLocked(obj._getId(), obj._ptr, obj._dumpsterAddr());
 	}
 
 	this._header.set32(
 	    HEADER.OBJECT_COUNT,
-	    this._header.get32(HEADER.OBJECT_COUNT) - objectsFreed);
+	    this._header.get32(HEADER.OBJECT_COUNT) - objectsFreed.length);
 
 	if (EXTENDED_SANITY_CHECKS) {
 	    this._sanityCheckLocked();
