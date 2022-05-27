@@ -7,12 +7,11 @@ let sharedobject = require("./sharedobject.js");
 let PRIVATE = null;
 let BUFFER_TYPE = null;
 
-// Plan:
-// - keep a local object <-> address bimap in World
-// - Special-case LocalObject in World and intern the object there before calling _init()
-// - check the bimap in this._world if false, if not found, return a stub "bad idea" object
-// - gc: on explicit call to a method on World. The bimap must keep a reference to the object
-
+// Value bits are:
+// When not in dumpster: store pointer, LSB is 0
+// When in dumpster: dumpster next pointer
+//   - LSB == 1: object needs to be removed from maps
+//   - LSB == 0: object is already removed from maps, only needs to be freed
 function handlerInvalid(...args) {
     throw new Error("attempted access to object in other thread");
 }
@@ -73,13 +72,11 @@ class LocalObject extends sharedobject.SharedObject {
     }
 
     _free() {
-	// The store pointer is not freed here because we need it to find the appropriate dumpster
-	// for the object. This could be worked around by moving the pointer to it from the store
-	// to this._ptr.get32(0), but that's a little too finicky to my taste. But then again, that
-	// would let us keep the invariant "_free() frees everything but the object block" so
-	// maybe.
-	//
-	// In any case, it will be freed in World._freeObjectLocked().
+	// Contract is that we must free anything that's not the object header, but we must keep
+	// track of the dumpster this object belongs to. So move its address to the object header.
+	let storePtr = this._arena.fromAddr(this._ptr.get32(0));
+	this._ptr.set32(0, storePtr.get32(0));
+	this._arena.free(storePtr);
 	super._free();
     }
 }

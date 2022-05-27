@@ -242,8 +242,25 @@ class World {
     _registerLocalObject(obj) {
 	let priv = this._localToPrivate.get(obj);
 	if (priv !== undefined) {
-	    // Already registered.
-	    return priv;
+	    // Already registered. Check if it's in the dumpster.
+	    let ok = false;
+	    priv._criticalSection.run(() => {
+		ok = (priv._ptr.get32(0) & 1) == 0;
+	    });
+
+	    if (ok) {
+		return priv;
+	    }
+
+	    debuglog("object @ " + priv._ptr._base + " is in dumpster");
+
+	    // Since the dumpster is a singly-linked list, removing an item from the middle is not
+	    // possible without iterating over it. Instead, mark it as "freed" so that when the
+	    // dumpster is emptied, it won't be removed from the local maps again.
+	    priv._ptr.set32(0, priv._ptr.get32(0) & ~1);
+	    if (!this._addrToPublic.delete(priv._ptr._base)) {
+		throw new Error("impossible");
+	    }
 	}
 
 	// Not registered. Create an object in shared storage.
@@ -265,6 +282,7 @@ class World {
 	// Differently from every other object, we do *not* add a thread reference to them. This is
 	// because we want the shared object garbage collected if this thread is the only one that
 	// has a reference to the associated object.
+	priv._ptr.set32(3, 0);
 
 	this._localToPrivate.set(obj, priv);
 	this._registerObjectForGc(priv);
@@ -565,6 +583,10 @@ class World {
 		// structures in the arena allocated by the world object
 		let pub = this._publicFromAddr(objPtr._base, true);
 		priv = pub[PRIVATE];
+		if (priv === undefined) {
+		    // local objects are kept in a map instead so that they are not modified
+		    priv = this._localToPrivate.get(pub);
+		}
 	    }
 
 	    this._toFree.push(priv);
@@ -575,21 +597,34 @@ class World {
 	let addr = this._dumpster.get32(0);
 
 	while (addr !== 0) {
+	    // The object does not need to be locked because now that it's in the dumpster, no other
+	    // thread can access it
 	    debuglog("freeing object @ " + addr + " from dumpster");
 	    let ptr = this._arena.fromAddr(addr);
-	    let next = ptr.get32(0);
-	    let pub = this._addrToPublic.get(addr).deref();
-	    let priv = this._localToPrivate.get(pub);
-	    if (priv === null) {
-		throw new Error("impossible");
+	    let next = ptr.get32(0) & ~1;
+	    let removeFromMaps  = (ptr.get32(0) & 1) === 1;
+
+	    this._arena.free(ptr);
+
+	    if (removeFromMaps) {
+		let pub = this._addrToPublic.get(addr).deref();
+		let priv = this._localToPrivate.get(pub);
+		if (priv === null) {
+		    throw new Error("impossible");
+		}
+
+		// The object must be unreferenced and local objects don't reference any shared
+		// object so all we need to do is to free the shared storage and remove the local
+		// references to the wrapped object
+		if (!this._localToPrivate.delete(pub)) {
+		    throw new Error("impossible");
+		}
+
+		if (!this._addrToPublic.delete(addr)) {
+		    throw new Error("impossible");
+		}
 	    }
 
-	    // The object must be unreferenced and local objects don't reference any shared object
-	    // so all we need to do is to free the shared storage and remove the local references
-	    // to the wrapped object
-	    this._arena.free(ptr);
-	    this._localToPrivate.delete(pub);
-	    this._addrToPublic.delete(addr);
 	    addr = next;
 	}
 
@@ -598,13 +633,10 @@ class World {
 
     _addToDumpsterLocked(obj) {
 	obj._criticalSection.run(() => {
-	    let storePtr = this._arena.fromAddr(obj._ptr.get32(0));
-	    let dumpsterAddr = storePtr.get32(0);
-	    let dumpsterPtr = this._arena.fromAddr(dumpsterAddr);
+	    let dumpsterPtr = this._arena.fromAddr(obj._ptr.get32(0));
 	    let oldHead = dumpsterPtr.get32(0);
 
-	    this._arena.free(storePtr);
-	    obj._ptr.set32(0, oldHead);
+	    obj._ptr.set32(0, oldHead | 1);
 	    dumpsterPtr.set32(0, obj._ptr._base);
 	});
     }
