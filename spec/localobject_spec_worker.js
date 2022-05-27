@@ -25,6 +25,13 @@ function otherThreadDeletesReferenceTest(w, t) {
     t.done("removed");
 }
 
+function reuseObjectInDumpsterTest(w, t) {
+    delete w.root().foo1;
+    delete w.root().foo2;
+    t.done("removed");
+}
+
 exports.smokeTest = smokeTest;
 exports.keepAliveTest = keepAliveTest;
 exports.otherThreadDeletesReferenceTest = otherThreadDeletesReferenceTest;
+exports.reuseObjectInDumpsterTest = reuseObjectInDumpsterTest;

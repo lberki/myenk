@@ -49,11 +49,42 @@ describe("localobject", () => {
 	expect(w.objectCount()).toBe(2);  // The objects just created
 	expect(gcCount).toBe(0);
 
-	// The latch is handled explicitly so that we keep object count under control
 	let t = testutil.spawnWorker(
 	    w, "localobject_spec_worker.js", "otherThreadDeletesReferenceTest", null,
 	    ["removed"]);
 	t.wait("removed");
+
+	w.emptyDumpster();
+	await testutil.forceGc();
+	expect(w.objectCount()).toBe(2);  // Test latch dictionary + one latch
+	expect(gcCount).toBe(2);
+
+	w.emptyDumpster();  // To make sure emptying an empty dumpster is no-op
+    });
+
+    it("can reuse object in dumpster", async () => {
+	let w = world.World.create(1024);
+	let obj1 = { bar: "qux" };
+	let obj2 = { bar2: "qux2" };
+	let gcCount = 0;
+	let registry = new FinalizationRegistry(() => { gcCount += 1; });
+	registry.register(obj1, null);
+	registry.register(obj2, null);
+	w.root().foo1 = obj1;
+	w.root().foo2 = obj2;
+
+	let t = testutil.spawnWorker(
+	    w, "localobject_spec_worker.js", "reuseObjectInDumpsterTest", null,
+	    ["removed"]);
+	t.wait("removed");
+
+	w.root().bar1 = obj1;
+	w.root().bar2 = obj2;
+
+	delete w.root().bar1;
+	delete w.root().bar2;
+	obj1 = null;
+	obj2 = null;
 
 	w.emptyDumpster();
 	await testutil.forceGc();
