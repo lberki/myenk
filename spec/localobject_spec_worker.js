@@ -20,6 +20,8 @@ function keepAliveTest(w, t) {
 }
 
 function otherThreadDeletesReferenceTest(w, t) {
+    t.done("started");
+    t.wait("set");
     delete w.root().foo1;
     delete w.root().foo2;
     t.done("removed");

@@ -40,23 +40,27 @@ describe("localobject", () => {
 	let registry = new FinalizationRegistry(() => { gcCount += 1; });
 	registry.register(obj1, null);
 	registry.register(obj2, null);
-	w.root().foo1 = obj1;
-	w.root().foo2 = obj2;
-	obj1 = null;
-	obj2 = null;
 
-	await testutil.forceGc();
-	expect(w.objectCount()).toBe(2);  // The objects just created
-	expect(gcCount).toBe(0);
 
 	let t = testutil.spawnWorker(
 	    w, "localobject_spec_worker.js", "otherThreadDeletesReferenceTest", null,
-	    ["removed"]);
+	    ["started", "set", "removed"]);
+	t.wait("started");
+	let left = w.left();
+	let objectCount = w.objectCount();
+	w.root().foo1 = obj1;
+	w.root().foo2 = obj2;
+	await testutil.forceGc();
+	expect(gcCount).toBe(0);
+	obj1 = null;
+	obj2 = null;
+	t.done("set");
 	t.wait("removed");
 
 	w.emptyDumpster();
 	await testutil.forceGc();
-	expect(w.objectCount()).toBe(2);  // Test latch dictionary + one latch
+	expect(w.objectCount()).toBe(objectCount);
+	expect(w.left()).toBe(left);
 	expect(gcCount).toBe(2);
 
 	w.emptyDumpster();  // To make sure emptying an empty dumpster is no-op
