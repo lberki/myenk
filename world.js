@@ -326,10 +326,7 @@ class World {
 		    objectsFreed += 1;
 		    debuglog("marking object ID " + priv._getId() + " with object @ " +
 			     priv._ptr._base + " as freeable");
-		    objectsToFree.push({
-			id: priv._getId(),
-			ptr: priv._ptr,
-			dumpsterAddr: priv._dumpsterAddr()});
+		    objectsToFree.push(priv);
 
 		    // This does not free the object header. This is so that pointer in the global
 		    // object list stays valid. It will be freed when we deallocate the object IDs
@@ -347,7 +344,7 @@ class World {
 		    this._header.get32(HEADER.OBJECT_COUNT) - objectsFreed);
 
 		for (let obj of objectsToFree) {
-		    this._freeObjectLocked(obj.id, obj.ptr, obj.dumpsterAddr);
+		    this._freeObjectLocked(obj);
 		}
 
 		if (EXTENDED_SANITY_CHECKS) {
@@ -360,15 +357,15 @@ class World {
 	}
     }
 
-    _freeObjectLocked(id, ptr, dumpsterAddr) {
-	this._objectIdToFreelist(id);
+    _freeObjectLocked(obj) {
+	this._objectIdToFreelist(obj._getId());
 
-	if (dumpsterAddr === 0) {
-	    debuglog("freeing object @ "+ ptr._base);
-	    this._arena.free(ptr);
+	if (obj instanceof localobject.LocalObject) {
+	    debuglog("moving object @ " + obj._ptr._base + " to dumpster");
+	    this._addToDumpsterLocked(obj);
 	} else {
-	    debuglog("moving object @ " + ptr._base + " to dumpster @ " + dumpsterAddr);
-	    this._addToDumpsterLocked(ptr, dumpsterAddr);
+	    debuglog("freeing object @ "+ obj._ptr._base);
+	    this._arena.free(obj._ptr);
 	}
     }
 
@@ -599,11 +596,17 @@ class World {
 	this._dumpster.set32(0, 0);
     }
 
-    _addToDumpsterLocked(objPtr, dumpsterAddr) {
-	let dumpsterPtr = this._arena.fromAddr(dumpsterAddr);
-	let oldHead = dumpsterPtr.get32(0);
-	objPtr.set32(0, oldHead);
-	dumpsterPtr.set32(0, objPtr._base);
+    _addToDumpsterLocked(obj) {
+	obj._criticalSection.run(() => {
+	    let storePtr = this._arena.fromAddr(obj._ptr.get32(0));
+	    let dumpsterAddr = storePtr.get32(0);
+	    let dumpsterPtr = this._arena.fromAddr(dumpsterAddr);
+	    let oldHead = dumpsterPtr.get32(0);
+
+	    this._arena.free(storePtr);
+	    obj._ptr.set32(0, oldHead);
+	    dumpsterPtr.set32(0, obj._ptr._base);
+	});
     }
 
     _gcLocked() {
@@ -701,7 +704,7 @@ class World {
 	}
 
 	for (let obj of objectsFreed) {
-	    this._freeObjectLocked(obj._getId(), obj._ptr, obj._dumpsterAddr());
+	    this._freeObjectLocked(obj);
 	}
 
 	this._header.set32(

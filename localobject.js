@@ -72,15 +72,14 @@ class LocalObject extends sharedobject.SharedObject {
 	storePtr.set32(1, 1);
     }
 
-    _dumpsterAddr() {
-	let storePtr = this._arena.fromAddr(this._ptr.get32(0));
-	return storePtr.get32(0);
-    }
-
     _free() {
-	let storePtr = this._arena.fromAddr(this._ptr.get32(0));
-	let dumpsterAddr = storePtr.get32(0);
-	this._arena.free(storePtr);
+	// The store pointer is not freed here because we need it to find the appropriate dumpster
+	// for the object. This could be worked around by moving the pointer to it from the store
+	// to this._ptr.get32(0), but that's a little too finicky to my taste. But then again, that
+	// would let us keep the invariant "_free() frees everything but the object block" so
+	// maybe.
+	//
+	// In any case, it will be freed in World._freeObjectLocked().
 	super._free();
     }
 }

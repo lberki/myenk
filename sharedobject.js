@@ -201,11 +201,6 @@ class SharedObject {
 	}
     }
 
-    // Dumpster to dump to. 0 if object can be freed without such complications.
-    _dumpsterAddr() {
-	return 0;
-    }
-
     _free() {
 	// Overridden by subclasses. Frees all memory allocated by the object except the header.
     }
