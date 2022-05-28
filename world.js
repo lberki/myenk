@@ -73,6 +73,7 @@ class World {
 	this.sanityCheck = this._criticalSection.wrap(this, this._sanityCheckLocked);
 	this.localSanityCheck = this._criticalSection.wrap(this, this._localSanityCheckLocked);
 	this.gc = this._criticalSection.wrap(this, this._gcLocked);
+	this.emptyDumpster = this._criticalSection.wrap(this, this._emptyDumpsterLocked);
 
 	// Every thread gets its own dumpster so it's appropriate to allocate it in the constructor
 	this._dumpster = this._arena.alloc(8);
@@ -594,7 +595,7 @@ class World {
 	});
     }
 
-    emptyDumpster() {
+    _emptyDumpsterLocked() {
 	let addr = this._dumpster.get32(0);
 
 	while (addr !== 0) {
