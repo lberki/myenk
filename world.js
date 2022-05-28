@@ -71,6 +71,7 @@ class World {
 	    this._arena.int32,
 	    (header._base + arena.BLOCK_HEADER_SIZE) / 4 + 3);
 	this.sanityCheck = this._criticalSection.wrap(this, this._sanityCheckLocked);
+	this.sanityCheckLocal = this._criticalSection.wrap(this, this._sanityCheckLocalLocked);
 	this.gc = this._criticalSection.wrap(this, this._gcLocked);
 
 	// Every thread gets its own dumpster so it's appropriate to allocate it in the constructor
@@ -245,7 +246,7 @@ class World {
 	    // Already registered. Check if it's in the dumpster.
 	    let ok = false;
 	    priv._criticalSection.run(() => {
-		ok = (priv._ptr.get32(0) & 1) == 0;
+		ok = (priv._ptr.get32(0) & 1) === 0;
 	    });
 
 	    if (ok) {
@@ -745,6 +746,51 @@ class World {
 
 	if (EXTENDED_SANITY_CHECKS) {
 	    this._sanityCheckLocked();
+	}
+    }
+
+    _sanityCheckLocalLocked() {
+	let objlist = this._arena.fromAddr(this._header.get32(HEADER.OBJLIST));
+
+	let objectsLeft = new Set();
+	for (let priv of this._localToPrivate.values()) {
+	    objectsLeft.add(priv._ptr._base);
+	}
+
+	for (let i = 0; i < this._header.get32(HEADER.OBJLIST_SIZE); i++) {
+	    let entry = objlist.get32(i);
+	    if (entry === 0) {
+		// Freelist entry of end marker
+		continue;
+	    } else if ((entry & 1) === 1) {
+		// Freelist entry. IDs of objects in the dumpster can be reused so we can't check
+		// anything useful here.
+	    } else {
+		let [obj, _] = this._createObjectPair(entry);
+		if (!(obj instanceof localobject.LocalObject)) {
+		    // Not a localobject
+		    continue;
+		}
+
+		if (obj._dumpsterAddr() !== this._dumpster._base) {
+		    // A localobject for a different thread
+		    continue;
+		}
+
+		if (!(objectsLeft.delete(entry))) {
+		    throw new Error("localobject @ " + entry + " is not in local map");
+		}
+
+		let pub = this._addrToPublic.get(entry).deref();
+		let priv = this._localToPrivate.get(pub);
+		if (priv._ptr._base !== entry) {
+		    throw new Error("localobject @ " + entry + " maps to one @ " + priv._ptr._base);
+		}
+	    }
+	}
+
+	for (let left of objectsLeft) {
+	    throw new Error("localobject @ " + left + " in local map was not on object list");
 	}
     }
 

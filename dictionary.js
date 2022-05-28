@@ -1,9 +1,6 @@
 "use strict";
 
 // TODO:
-// - Add local objects to consistency checks:
-//    - localToPrivate objects are the same as on object ID chain
-//    - addrToPublic keys are all on object ID chain
 // - Add a test case for freeing (and keeping alive) objects from worker threads
 // - Add a test case for the "access from other threads raises exception" functionality
 // - Figure out a way to re-enable the "refcount cannot be 0" assertion

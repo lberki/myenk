@@ -71,6 +71,11 @@ class LocalObject extends sharedobject.SharedObject {
 	storePtr.set32(1, 1);
     }
 
+    _dumpsterAddr() {
+	let storePtr = this._arena.fromAddr(this._ptr.get32(0));
+	return storePtr.get32(0);
+    }
+
     _free() {
 	// Contract is that we must free anything that's not the object header, but we must keep
 	// track of the dumpster this object belongs to. So move its address to the object header.
