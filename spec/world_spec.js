@@ -94,6 +94,20 @@ describe("world", () => {
 	expect(w.objectCount()).toBe(2);
     });
 
+    it("can gc with freelist entry", async () => {
+	let w = world.World.create(1024);
+	w.root().foo = w.createDictionary();
+
+	expect(w.objectCount()).toBe(1);
+
+	await testutil.forceGc();  // Remove the reference from the local thread
+	delete w.root().foo;  // Move the object to the freelist
+
+	expect(w.objectCount()).toBe(0);
+	w.gc();
+	w.sanityCheck();
+    });
+
     it("can deep copy simple values", () => {
 	let w = world.World.create(1024);
 	w.root().Number = w.deepCopy(42);

@@ -653,7 +653,7 @@ class World {
 
 	for (let i = 0; i < this._header.get32(HEADER.OBJLIST_SIZE); i++) {
 	    let addr = objlist.get32(i);
-	    if ((addr & 1) == 1) {
+	    if ((addr & 1) === 1 || addr === 0) {
 		// This is a freelist entry
 		continue;
 	    }
@@ -703,7 +703,7 @@ class World {
 
 	for (let i = 0; i < this._header.get32(HEADER.OBJLIST_SIZE); i++) {
 	    let addr = objlist.get32(i);
-	    if ((addr & 1) == 1) {
+	    if ((addr & 1) === 1 || addr === 0) {
 		// This is a freelist entry
 		continue;
 	    }
