@@ -71,7 +71,7 @@ class World {
 	    this._arena.int32,
 	    (header._base + arena.BLOCK_HEADER_SIZE) / 4 + 3);
 	this.sanityCheck = this._criticalSection.wrap(this, this._sanityCheckLocked);
-	this.sanityCheckLocal = this._criticalSection.wrap(this, this._sanityCheckLocalLocked);
+	this.localSanityCheck = this._criticalSection.wrap(this, this._localSanityCheckLocked);
 	this.gc = this._criticalSection.wrap(this, this._gcLocked);
 
 	// Every thread gets its own dumpster so it's appropriate to allocate it in the constructor
@@ -749,13 +749,25 @@ class World {
 	}
     }
 
-    _sanityCheckLocalLocked() {
+    _localSanityCheckLocked() {
 	let objlist = this._arena.fromAddr(this._header.get32(HEADER.OBJLIST));
 
 	let objectsLeft = new Set();
 	for (let priv of this._localToPrivate.values()) {
 	    objectsLeft.add(priv._ptr._base);
 	}
+
+	let checkObject = (addr) => {
+	    if (!(objectsLeft.delete(addr))) {
+		throw new Error("localobject @ " + addr + " is not in local map");
+	    }
+
+	    let pub = this._addrToPublic.get(addr).deref();
+	    let priv = this._localToPrivate.get(pub);
+	    if (priv._ptr._base !== addr) {
+		throw new Error("localobject @ " + addr + " maps to one @ " + priv._ptr._base);
+	    }
+	};
 
 	for (let i = 0; i < this._header.get32(HEADER.OBJLIST_SIZE); i++) {
 	    let entry = objlist.get32(i);
@@ -777,16 +789,25 @@ class World {
 		    continue;
 		}
 
-		if (!(objectsLeft.delete(entry))) {
-		    throw new Error("localobject @ " + entry + " is not in local map");
-		}
-
-		let pub = this._addrToPublic.get(entry).deref();
-		let priv = this._localToPrivate.get(pub);
-		if (priv._ptr._base !== entry) {
-		    throw new Error("localobject @ " + entry + " maps to one @ " + priv._ptr._base);
-		}
+		checkObject(entry);
 	    }
+	}
+
+	let addr = this._dumpster.get32(0);
+	while (addr !== 0) {
+	    let ptr = this._arena.fromAddr(addr);
+	    let next = ptr.get32(0) & ~1;
+	    let removed = (ptr.get32(0) & 1) === 0;
+
+	    if (removed) {
+		if (this._addrToPublic.has(addr)) {
+		    throw new Error("object @ " + addr + " removed from dumpster has map entry");
+		}
+	    } else {
+		checkObject(addr);
+	    }
+
+	    addr = next;
 	}
 
 	for (let left of objectsLeft) {
