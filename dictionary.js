@@ -1,7 +1,6 @@
 "use strict";
 
 // TODO:
-// - Add a test case for the "access from other threads raises exception" functionality
 // - Figure out a way to re-enable the "refcount cannot be 0" assertion
 // - Write documentation about emptyDumpster() (or make the method unnecessary)
 

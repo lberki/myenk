@@ -33,7 +33,18 @@ function reuseObjectInDumpsterTest(w, t) {
     t.done("removed");
 }
 
+function throwOnOtherThreadTest(w, t) {
+    try {
+	let tmp = w.root().foo.foo;
+    } catch (e) {
+	w.root().thrown = true;
+    } finally {
+	t.done("referenced");
+    }
+}
+
 exports.smokeTest = smokeTest;
 exports.keepAliveTest = keepAliveTest;
 exports.otherThreadDeletesReferenceTest = otherThreadDeletesReferenceTest;
 exports.reuseObjectInDumpsterTest = reuseObjectInDumpsterTest;
+exports.throwOnOtherThreadTest = throwOnOtherThreadTest;

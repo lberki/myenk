@@ -17,6 +17,17 @@ describe("localobject", () => {
 	w.localSanityCheck();
     });
 
+    it("throws on other thread", () => {
+	let w = world.World.create(1024);
+	let obj = { foo: "bar" };
+	w.root().foo = obj;
+
+	let t = testutil.spawnWorker(
+	    w, "localobject_spec_worker.js", "throwOnOtherThreadTest", null, ["referenced"]);
+	t.wait("referenced");
+	expect(w.root().thrown).toBe(true);
+    });
+
     it("can make other threads keep objects alive", async () => {
 	let w = world.World.create(1024);
 	let obj = { bar: "qux" };
