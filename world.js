@@ -7,6 +7,7 @@ let arena = require("./arena.js");
 let sharedobject = require("./sharedobject.js");
 let dictionary = require("./dictionary.js");
 let localobject = require("./localobject.js");
+let sharedsymbol = require("./sharedsymbol.js");
 let array = require("./array.js");
 let sync = require("./sync.js");
 let sync_internal = require("./sync_internal.js");
@@ -28,6 +29,7 @@ const ObjectTypes = [
     dictionary.Dictionary,
     array.Array,
     localobject.LocalObject,
+    sharedsymbol.SharedSymbol,
     sync.Latch,
     sync.Lock
 ];
@@ -622,6 +624,9 @@ class World {
     }
 
     _addToDumpsterLocked(obj) {
+	// This needs both the world lock and the object lock because even though the object is
+	// unreferenced, it may still be mutated by its owning thread. The fix would be either
+	// to use an array instead of a linked list for the dumpster.
 	obj._criticalSection.run(() => {
 	    let dumpsterPtr = this._arena.fromAddr(obj._ptr.get32(0));
 	    let oldHead = dumpsterPtr.get32(0);
@@ -632,8 +637,8 @@ class World {
     }
 
     _gcLocked() {
-	// GC is the only time when a thread holds more than one lock (the world lock + a single
-	// object lock)
+	// GC is one of the few times when a thread holds more than one lock (the world lock + a
+	// single object lock)
 
 	// Collect all the GC roots (objects referenced from other threads)
 	let objlist = this._arena.fromAddr(this._header.get32(HEADER.OBJLIST));
