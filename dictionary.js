@@ -1,11 +1,12 @@
 "use strict";
 
 // TODO:
+// - Copy over symbol description to foreign threads
+// - Implement symbols as dictionar keys
 // - Figure out a way to re-enable the "refcount cannot be 0" assertion
 // - Write documentation about emptyDumpster() (or make the method unnecessary)
 
 // - Implement various methods on Dictionary
-// - Implement symbol values
 // - Shorten symbols:
 //   - world.World.create -> world.create()
 //   - createArray() -> array (and the like)

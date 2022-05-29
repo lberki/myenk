@@ -19,6 +19,7 @@ let BUFFER_TYPE = null;
 class SharedSymbol extends sharedobject.SharedObject {
     constructor(_world, _arena, _ptr) {
 	super(_world, _arena, _ptr);
+	this._ownThread = false;
     }
 
     static _registerForWorld(privateSymbol, bufferType) {
@@ -28,13 +29,14 @@ class SharedSymbol extends sharedobject.SharedObject {
 
     static _create(world, arena, ptr) {
 	let priv = new SharedSymbol(world, arena, ptr);
-	let pub = Symbol(); // TODO
+	let pub = Symbol(); // TODO: copy over description
 	return [priv, pub];
     }
 
-    _init() {
+    _init(sym) {
 	super._init();
 	this._setType(BUFFER_TYPE);
+	this._ownThread = true;
 	let storePtr = this._arena.alloc(8);
 	this._ptr.set32(0, storePtr._base);
 	storePtr.set32(0, this._world._dumpster._base);
@@ -44,6 +46,10 @@ class SharedSymbol extends sharedobject.SharedObject {
     _dumpsterAddr() {
 	let storePtr = this._arena.fromAddr(this._ptr.get32(0));
 	return storePtr.get32(0);
+    }
+
+    _useDumpster() {
+	return true;
     }
 
     _free() {

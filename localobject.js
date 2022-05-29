@@ -27,7 +27,6 @@ function handlerGet(target, property) {
 const handlers = {
     apply: handlerInvalid,
     construct: handlerInvalid,
-    getPrototypeOf: handlerInvalid,
     setPrototypeOf: handlerInvalid,
     defineProperty: handlerInvalid,
     getOwnPropertyDescriptor: handlerInvalid,
@@ -46,7 +45,6 @@ const handlers = {
 class LocalObject extends sharedobject.SharedObject {
     constructor(_world, _arena, _ptr) {
 	super(_world, _arena, _ptr);
-
 	this._ownThread = false;
     }
 
@@ -61,7 +59,9 @@ class LocalObject extends sharedobject.SharedObject {
 	return [priv, pub];
     }
 
-    _init() {
+    _init(obj) {
+	// obj is ignored since all we care about is object identity. Other threads can't affect the
+	// object much so they don't need to know anything about it.
 	super._init();
 	this._setType(BUFFER_TYPE);
 	this._ownThread = true;
@@ -74,6 +74,10 @@ class LocalObject extends sharedobject.SharedObject {
     _dumpsterAddr() {
 	let storePtr = this._arena.fromAddr(this._ptr.get32(0));
 	return storePtr.get32(0);
+    }
+
+    _useDumpster() {
+	return true;
     }
 
     _free() {

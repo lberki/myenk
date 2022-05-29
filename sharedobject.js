@@ -188,11 +188,20 @@ class SharedObject {
 	    this._world._addWorldRef(priv._ptr);
 	    type = ValueType.OBJECT;
 	    bytes = priv._ptr._base;
+	} else if (typeof(value) === "symbol") {
+	    let priv = this._world._registerSymbol(value);
+	    this._world._addWorldRef(priv._ptr);
+	    type = ValueType.OBJECT;
+	    bytes = priv._ptr._base;
 	} else {
 	    throw new Error("not implemented");
 	}
 
 	return [type, bytes];
+    }
+
+    _useDumpster() {
+	return false;
     }
 
     *_valueReferences(type, bytes) {

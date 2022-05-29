@@ -232,6 +232,14 @@ class World {
     }
 
     _registerLocalObject(obj) {
+	return this._registerLocal(localobject.LocalObject, obj);
+    }
+
+    _registerSymbol(sym) {
+	return this._registerLocal(sharedsymbol.SharedSymbol, sym);
+    }
+
+    _registerLocal(resultClass, obj) {
 	let priv = this._localToPrivate.get(obj);
 	if (priv !== undefined) {
 	    // Already registered. Check if it's in the dumpster.
@@ -259,17 +267,19 @@ class World {
 
 	// Allocate memory as usual and register in the address-to-public map.
 	let ptr = this._arena.alloc(OBJECT_SIZE);
-	debuglog("allocated LocalObject @ " + ptr._base);
+	debuglog("allocated local " + resultClass.name + " @ " + ptr._base);
 
-	[priv, ] = localobject.LocalObject._create(this, this._arena, ptr);
+	[priv, ] = resultClass._create(this, this._arena, ptr);
 
-	// We don't use _registerObject so that we don't need to deal with _dispose()
-	this._addrToPublic.set(ptr._base, new WeakRef(obj));
+	// We can't have a WeakRef here because WeakRefs can't reference Symbols but we don't need
+	// that because we keep a reference to the object in _localToPrivate anyway so we just
+	// have a heterogenous map.
+	this._addrToPublic.set(ptr._base, obj);
 
 	// Initialization is a little different: we don't pass any arguments since there is nothing
 	// other threads can usefully know about this object. Calling this method is a signal that
 	// the LocalObject instance refers to an object that lives on this thread.
-	priv._init();
+	priv._init(obj);
 
 	// Differently from every other object, we do *not* add a thread reference to them. This is
 	// because we want the shared object garbage collected if this thread is the only one that
@@ -370,7 +380,7 @@ class World {
     _freeObjectLocked(obj) {
 	this._objectIdToFreelist(obj._getId());
 
-	if (obj instanceof localobject.LocalObject) {
+	if (obj._useDumpster()) {
 	    debuglog("moving object @ " + obj._ptr._base + " to dumpster");
 	    this._addToDumpsterLocked(obj);
 	} else {
@@ -497,9 +507,19 @@ class World {
     }
 
     _registerObject(priv, pub, addr) {
-	let wr = new WeakRef(pub);
-	this._registry.register(pub, priv);
-	this._addrToPublic.set(addr, wr);
+	if (typeof(pub) === "symbol") {
+	    // Special case: Symbols are not objects so weak references cannot point to them. So
+	    // do not wrap them with a weak reference. This of course means that shared symbols that
+	    // have references to them from other threads will never get garbage collected but there
+	    // does not seem to be a way to make that work.
+	    this._addrToPublic.set(addr, pub);
+
+	    this._localToPrivate.set(pub, priv);
+	} else {
+	    let wr = new WeakRef(pub);
+	    this._registry.register(pub, priv);
+	    this._addrToPublic.set(addr, wr);
+	}
     }
 
     _createObjectPair(addr) {
@@ -514,12 +534,14 @@ class World {
 
     _publicFromAddr(addr, forGc=false) {
 	let wr = this._addrToPublic.get(addr);
-	if (wr !== undefined) {
+	if (wr instanceof WeakRef) {
 	    // Do not call deref() twice in case Javascript GC happens in between
 	    let existing = wr.deref();
 	    if (existing !== undefined) {
 		return existing;
 	    }
+	} else if (wr !== undefined) {
+	    return wr;
 	}
 
 	let [priv, pub] = this._createObjectPair(addr);
@@ -599,7 +621,7 @@ class World {
 	    this._arena.free(ptr);
 
 	    if (removeFromMaps) {
-		let pub = this._addrToPublic.get(addr).deref();
+		let pub = this._addrToPublic.get(addr);
 		let priv = this._localToPrivate.get(pub);
 		if (priv === null) {
 		    throw new Error("impossible");
@@ -756,7 +778,7 @@ class World {
 		throw new Error("localobject @ " + addr + " is not in local map");
 	    }
 
-	    let pub = this._addrToPublic.get(addr).deref();
+	    let pub = this._addrToPublic.get(addr);
 	    let priv = this._localToPrivate.get(pub);
 	    if (priv._ptr._base !== addr) {
 		throw new Error("localobject @ " + addr + " maps to one @ " + priv._ptr._base);
@@ -773,7 +795,7 @@ class World {
 		// anything useful here.
 	    } else {
 		let [obj, _] = this._createObjectPair(entry);
-		if (!(obj instanceof localobject.LocalObject)) {
+		if (!obj._useDumpster()) {
 		    // Not a localobject
 		    continue;
 		}
