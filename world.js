@@ -232,32 +232,10 @@ class World {
 	return this._createObject(sync.Lock, ...args);
     }
 
-    _registerLocalObject(obj) {
-	return this._registerLocal(localobject.LocalObject, obj);
-    }
-
     _registerSymbol(sym) {
 	let priv = this._symbolToPrivate.get(sym);
 	if (priv !== undefined) {
-	    // Already registered. Check if it's in the dumpster.
-	    let ok = false;
-	    priv._criticalSection.run(() => {
-		ok = (priv._ptr.get32(0) & 1) === 0;
-	    });
-
-	    if (ok) {
-		return priv;
-	    }
-
-	    debuglog("object @ " + priv._ptr._base + " is in dumpster");
-
-	    // Since the dumpster is a singly-linked list, removing an item from the middle is not
-	    // possible without iterating over it. Instead, mark it as "freed" so that when the
-	    // dumpster is emptied, it won't be removed from the local maps again.
-	    priv._ptr.set32(0, priv._ptr.get32(0) & ~1);
-	    if (!this._addrToPublic.delete(priv._ptr._base)) {
-		throw new Error("impossible");
-	    }
+	    return priv;
 	}
 
 	// Not registered. Create an object in shared storage.
@@ -269,18 +247,14 @@ class World {
 	[priv, ] = sharedsymbol.SharedSymbol._create(this, this._arena, ptr);
 
 	// We can't have a WeakRef here because WeakRefs can't reference Symbols but we don't need
-	// that because we keep a reference to the object in _localToPrivate anyway so we just
-	// have a heterogenous map.
+	// that because we keep a reference to the object in _symbolToPrivate anyway
 	this._addrToPublic.set(ptr._base, sym);
 
-	// Initialization is a little different: we don't pass any arguments since there is nothing
-	// other threads can usefully know about this object. Calling this method is a signal that
-	// the LocalObject instance refers to an object that lives on this thread.
 	priv._init(sym);
 
-	// Differently from every other object, we do *not* add a thread reference to them. This is
-	// because we want the shared object garbage collected if this thread is the only one that
-	// has a reference to the associated object.
+	// Symbols are never garbage collected since the JS garbage collector does not tell us when
+	// they are not needed anymore, but let's keep the refcount in order anyway. Reasoning for
+	// the zero is same as in _registerLocalObject().
 	priv._ptr.set32(3, 0);
 
 	this._symbolToPrivate.set(sym, priv);
@@ -288,7 +262,7 @@ class World {
 	return priv;
     }
 
-    _registerLocal(resultClass, obj) {
+    _registerLocalObject(obj) {
 	let priv = this._localToPrivate.get(obj);
 	if (priv !== undefined) {
 	    // Already registered. Check if it's in the dumpster.
@@ -308,6 +282,8 @@ class World {
 	    // dumpster is emptied, it won't be removed from the local maps again.
 	    priv._ptr.set32(0, priv._ptr.get32(0) & ~1);
 	    if (!this._addrToPublic.delete(priv._ptr._base)) {
+		// The object should be in addrToPublic because it's in the dumpster but not marked
+		// as freed
 		throw new Error("impossible");
 	    }
 	}
@@ -316,19 +292,19 @@ class World {
 
 	// Allocate memory as usual and register in the address-to-public map.
 	let ptr = this._arena.alloc(OBJECT_SIZE);
-	debuglog("allocated local " + resultClass.name + " @ " + ptr._base + ", thread " + this._dumpster._base);
+	debuglog("allocated localobject @ " + ptr._base + ", thread " + this._dumpster._base);
 
-	[priv, ] = resultClass._create(this, this._arena, ptr);
+	[priv, ] = localobject.LocalObject._create(this, this._arena, ptr);
 
-	// We can't have a WeakRef here because WeakRefs can't reference Symbols but we don't need
-	// that because we keep a reference to the object in _localToPrivate anyway so we just
-	// have a heterogenous map.
+	// _localToPrivate references this object anyway so there is not much point in wrapping it
+	// in a WeakRef. This makes _addrToPublic heterogenous, but hey, this is JavaScript. We can
+	// fix this later by using two maps and choosing them based on object type.
 	this._addrToPublic.set(ptr._base, obj);
 
 	// Initialization is a little different: we don't pass any arguments since there is nothing
 	// other threads can usefully know about this object. Calling this method is a signal that
 	// the LocalObject instance refers to an object that lives on this thread.
-	priv._init(obj);
+	priv._init();
 
 	// Differently from every other object, we do *not* add a thread reference to them. This is
 	// because we want the shared object garbage collected if this thread is the only one that

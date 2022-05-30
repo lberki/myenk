@@ -59,9 +59,7 @@ class LocalObject extends sharedobject.SharedObject {
 	return [priv, pub];
     }
 
-    _init(obj) {
-	// obj is ignored since all we care about is object identity. Other threads can't affect the
-	// object much so they don't need to know anything about it.
+    _init() {
 	super._init();
 	this._setType(BUFFER_TYPE);
 	this._ownThread = true;
