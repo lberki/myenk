@@ -2,7 +2,12 @@
 
 // TODO:
 // - Copy over symbol description to foreign threads
-// - Implement symbols as dictionar keys
+// - Implement symbols as dictionary keys
+// - Fix the "GC and refcount decrease race for freeing the object" bug
+//   - Do not free object in GC with refcount 0 (that is done by whoever set it to 0)
+// - Make sure Symbols work with GC
+//   - Probably special-case them? Maybe the above "refcount 0" trick works, but I'll have to think
+//     about how refcounting for Symbols works exactly
 // - Figure out a way to re-enable the "refcount cannot be 0" assertion
 // - Write documentation about emptyDumpster() (or make the method unnecessary)
 
