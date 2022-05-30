@@ -1,7 +1,6 @@
 "use strict";
 
 // TODO:
-// - Do not put symbols in the dumpster (they are never deallocated, GC doesn't work for them)
 // - Copy over symbol description to foreign threads
 // - Implement symbols as dictionar keys
 // - Figure out a way to re-enable the "refcount cannot be 0" assertion

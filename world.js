@@ -520,7 +520,7 @@ class World {
     }
 
     _dispose(priv) {
-	if (priv instanceof localobject.LocalObject && priv._ownThread) {
+	if (priv._useDumpster() && priv._ownThread) {
 	    // These objects are not registered in the FinalizationRegistry
 	    throw new Error("impossible");
 	}
@@ -700,7 +700,7 @@ class World {
 		continue;
 	    }
 
-	    let [obj, _] = this._createObjectPair(addr);
+	    let [obj, ] = this._createObjectPair(addr);
 	    obj._criticalSection.run(() => {
 		if (obj._ptr.get32(3) >= THREAD_RC_DELTA) {
 		    roots.push(obj);
@@ -733,7 +733,7 @@ class World {
 		for (let addr of obj._references()) {
 		    // TODO: it's probably quite wasteful to always create a new local object even
 		    // though it's already been visited
-		    let [priv, _] = this._createObjectPair(addr);
+		    let [priv, ] = this._createObjectPair(addr);
 		    debuglog("enqueuing edge @ " + obj._ptr._base + " -> @ " + addr);
 		    queue.push(priv);
 		}
@@ -833,18 +833,25 @@ class World {
 		// Freelist entry. IDs of objects in the dumpster can be reused so we can't check
 		// anything useful here.
 	    } else {
-		let [obj, _] = this._createObjectPair(entry);
-		if (!obj._useDumpster()) {
-		    // Not a localobject
-		    continue;
-		}
+		let [obj, ] = this._createObjectPair(entry);
+		if (obj instanceof localobject.LocalObject) {
+		    if (obj._dumpsterAddr() !== this._dumpster._base) {
+			// A localobject for a different thread
+			continue;
+		    }
 
-		if (obj instanceof localobject.LocalObject && obj._dumpsterAddr() !== this._dumpster._base) {
-		    // A localobject for a different thread
-		    continue;
-		}
+		    checkObject(entry);
+		} else if (obj instanceof sharedsymbol.SharedSymbol) {
+		    let sym = this._addrToPublic.get(entry);
+		    let priv2 = this._symbolToPrivate.get(sym);
+		    if (!(symbolsLeft.delete(entry))) {
+			throw new Error("symbol @ " + entry + " is not in local map");
+		    }
 
-		checkObject(entry);
+		    if (priv2._ptr._base !== entry) {
+			throw new Error("localobject/symbol @ " + entry + " maps to one @ " + priv2._ptr._base);
+		    }
+		}
 	    }
 	}
 

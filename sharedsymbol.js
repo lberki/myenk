@@ -43,15 +43,6 @@ class SharedSymbol extends sharedobject.SharedObject {
 	storePtr.set32(1, 0);  // TODO: allocate string for description
     }
 
-    _dumpsterAddr() {
-	let storePtr = this._arena.fromAddr(this._ptr.get32(0));
-	return storePtr.get32(0);
-    }
-
-    _useDumpster() {
-	return true;
-    }
-
     _free() {
 	// Contract is that we must free anything that's not the object header, but we must keep
 	// track of the dumpster this object belongs to. So move its address to the object header.
