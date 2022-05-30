@@ -55,6 +55,7 @@ class World {
 	this._header = header;
 	this._addrToPublic = new Map();
 	this._localToPrivate = new Map();
+	this._symbolToPrivate = new Map();
 	this._registry = new FinalizationRegistry(priv => { this._dispose(priv); });
 	this._mutation = null;
 	this._criticalSection = new sync_internal.CriticalSection(
@@ -236,7 +237,55 @@ class World {
     }
 
     _registerSymbol(sym) {
-	return this._registerLocal(sharedsymbol.SharedSymbol, sym);
+	let priv = this._symbolToPrivate.get(sym);
+	if (priv !== undefined) {
+	    // Already registered. Check if it's in the dumpster.
+	    let ok = false;
+	    priv._criticalSection.run(() => {
+		ok = (priv._ptr.get32(0) & 1) === 0;
+	    });
+
+	    if (ok) {
+		return priv;
+	    }
+
+	    debuglog("object @ " + priv._ptr._base + " is in dumpster");
+
+	    // Since the dumpster is a singly-linked list, removing an item from the middle is not
+	    // possible without iterating over it. Instead, mark it as "freed" so that when the
+	    // dumpster is emptied, it won't be removed from the local maps again.
+	    priv._ptr.set32(0, priv._ptr.get32(0) & ~1);
+	    if (!this._addrToPublic.delete(priv._ptr._base)) {
+		throw new Error("impossible");
+	    }
+	}
+
+	// Not registered. Create an object in shared storage.
+
+	// Allocate memory as usual and register in the address-to-public map.
+	let ptr = this._arena.alloc(OBJECT_SIZE);
+	debuglog("allocated local symbol @ " + ptr._base);
+
+	[priv, ] = sharedsymbol.SharedSymbol._create(this, this._arena, ptr);
+
+	// We can't have a WeakRef here because WeakRefs can't reference Symbols but we don't need
+	// that because we keep a reference to the object in _localToPrivate anyway so we just
+	// have a heterogenous map.
+	this._addrToPublic.set(ptr._base, sym);
+
+	// Initialization is a little different: we don't pass any arguments since there is nothing
+	// other threads can usefully know about this object. Calling this method is a signal that
+	// the LocalObject instance refers to an object that lives on this thread.
+	priv._init(sym);
+
+	// Differently from every other object, we do *not* add a thread reference to them. This is
+	// because we want the shared object garbage collected if this thread is the only one that
+	// has a reference to the associated object.
+	priv._ptr.set32(3, 0);
+
+	this._symbolToPrivate.set(sym, priv);
+	this._registerObjectForGc(priv);
+	return priv;
     }
 
     _registerLocal(resultClass, obj) {
@@ -267,7 +316,7 @@ class World {
 
 	// Allocate memory as usual and register in the address-to-public map.
 	let ptr = this._arena.alloc(OBJECT_SIZE);
-	debuglog("allocated local " + resultClass.name + " @ " + ptr._base);
+	debuglog("allocated local " + resultClass.name + " @ " + ptr._base + ", thread " + this._dumpster._base);
 
 	[priv, ] = resultClass._create(this, this._arena, ptr);
 
@@ -511,10 +560,10 @@ class World {
 	    // Special case: Symbols are not objects so weak references cannot point to them. So
 	    // do not wrap them with a weak reference. This of course means that shared symbols that
 	    // have references to them from other threads will never get garbage collected but there
-	    // does not seem to be a way to make that work.
+	    // does not seem to be a way to make that work. This also conveniently means that we
+	    // never have to clean up _symbolToPrivate.
 	    this._addrToPublic.set(addr, pub);
-
-	    this._localToPrivate.set(pub, priv);
+	    this._symbolToPrivate.set(pub, priv);
 	} else {
 	    let wr = new WeakRef(pub);
 	    this._registry.register(pub, priv);
@@ -769,19 +818,33 @@ class World {
 	let objlist = this._arena.fromAddr(this._header.get32(HEADER.OBJLIST));
 
 	let objectsLeft = new Set();
+	let symbolsLeft = new Set();
+
 	for (let priv of this._localToPrivate.values()) {
 	    objectsLeft.add(priv._ptr._base);
 	}
 
+	for (let priv of this._symbolToPrivate.values()) {
+	    symbolsLeft.add(priv._ptr._base);
+	}
+
 	let checkObject = (addr) => {
-	    if (!(objectsLeft.delete(addr))) {
-		throw new Error("localobject @ " + addr + " is not in local map");
+	    let pub = this._addrToPublic.get(addr);
+	    let priv;
+	    if (typeof(pub) === "symbol") {
+		priv = this._symbolToPrivate.get(pub);
+		if (!(symbolsLeft.delete(addr))) {
+		    throw new Error("symbol @ " + addr + " is not in local map");
+		}
+	    } else {
+		priv = this._localToPrivate.get(pub);
+		if (!(objectsLeft.delete(addr))) {
+		    throw new Error("localobject @ " + addr + " is not in local map");
+		}
 	    }
 
-	    let pub = this._addrToPublic.get(addr);
-	    let priv = this._localToPrivate.get(pub);
 	    if (priv._ptr._base !== addr) {
-		throw new Error("localobject @ " + addr + " maps to one @ " + priv._ptr._base);
+		throw new Error("localobject/symbol @ " + addr + " maps to one @ " + priv._ptr._base);
 	    }
 	};
 
@@ -800,7 +863,7 @@ class World {
 		    continue;
 		}
 
-		if (obj._dumpsterAddr() !== this._dumpster._base) {
+		if (obj instanceof localobject.LocalObject && obj._dumpsterAddr() !== this._dumpster._base) {
 		    // A localobject for a different thread
 		    continue;
 		}
@@ -828,6 +891,10 @@ class World {
 
 	for (let left of objectsLeft) {
 	    throw new Error("localobject @ " + left + " in local map was not on object list");
+	}
+
+	for (let left of symbolsLeft) {
+	    throw new Error("symbol @ " + left + " in local map was not on object list");
 	}
     }
 

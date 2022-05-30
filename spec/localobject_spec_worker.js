@@ -6,6 +6,7 @@ let world = require("../world.js");
 
 function smokeTest(w, t) {
     w.root().bar = w.root().foo;
+    w.localSanityCheck();
     t.done("moved");
 }
 
