@@ -176,6 +176,29 @@ describe("world", () => {
 	expect(w.objectCount()).toBe(0);
     });
 
+    it("refcount and gc stress test", async () => {
+	let w = world.World.create(1024);
+	w.root().done = false;
+
+	let t = testutil.spawnWorker(
+	    w, "world_spec_worker.js", "gcLoop", null, ["gcloop"]);
+
+	// This seems to be a very low number of iterations but it is apparently enough to tickle
+	// at least one bug
+	for (let i = 0; i < 20; i++) {
+	    w.root().a = w.createDictionary();
+	    w.root().a.b = w.createDictionary();
+	    w.root().a.b.c = w.createDictionary();
+	    await testutil.forceGc();  // This thread now does not reference a.b and a.b.c
+	    delete w.root().a;
+	}
+
+	w.root().done = true;
+	t.wait("gcloop");
+
+	// TODO: sanity check + object count
+    });
+
     it("symbol allocation stress test", async () => {
 	// Symbols are not deallocated so we need a lot of RAM
 	let w = world.World.create(1024*1024);
@@ -192,5 +215,6 @@ describe("world", () => {
 	w.root().done = true;
 	t.wait("gcloop");
 
+	// TODO: sanity check + check object count
     });
 });
