@@ -175,4 +175,22 @@ describe("world", () => {
 	w.gc();
 	expect(w.objectCount()).toBe(0);
     });
+
+    it("symbol allocation stress test", async () => {
+	// Symbols are not deallocated so we need a lot of RAM
+	let w = world.World.create(1024*1024);
+	w.root().done = false;
+	w.root().symbols = w.createArray();
+
+	let t = testutil.spawnWorker(
+	    w, "world_spec_worker.js", "gcLoop", null, ["gcloop"]);
+	for (let i = 0; i < 1000; i++) {
+	    let s = Symbol("stress test " + i);
+	    w.root().symbols.push(s);
+	    w.localSanityCheck();
+	}
+	w.root().done = true;
+	t.wait("gcloop");
+
+    });
 });
