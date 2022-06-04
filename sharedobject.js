@@ -1,6 +1,6 @@
 "use strict";
 
-const util = require("util");
+const util = require("./util.js");
 const debuglog = util.debuglog("sharedobject");
 
 let arena = require("./arena.js");

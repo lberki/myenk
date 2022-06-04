@@ -4,7 +4,7 @@
 // - Figure out why # private members don't work
 // - Implement statistics (fragmentation, blocks, histogram, etc.)
 
-const util = require("util");
+const util = require("./util.js");
 const debuglog = util.debuglog("arena");
 
 let sync_internal = require("./sync_internal.js");

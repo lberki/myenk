@@ -25,7 +25,7 @@
 // - Bigint manually
 // - Symbol-to-sequence id bimap for Symbols
 
-const util = require("util");
+const util = require("./util.js");
 const debuglog = util.debuglog("dictionary");
 
 let sharedobject = require("./sharedobject.js");
