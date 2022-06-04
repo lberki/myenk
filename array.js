@@ -211,6 +211,19 @@ class Array extends sharedobject.SharedObject {
 	super._free();
     }
 
+    *_references() {
+        let storePtr = this._getStore();
+        if (storePtr === null) {
+            return;
+        }
+
+        for (let i = 0; i < this._getSize(storePtr); i++) {
+            let type = storePtr.get32(2 + 2 * i);
+            let bytes = storePtr.get32(3 + 2 * i);
+            yield* this._valueReferences(type, bytes);
+        }
+    }
+
     _getStore() {
 	let addr = this._ptr.get32(0);
 	if (addr === 0) {
