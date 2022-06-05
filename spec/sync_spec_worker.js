@@ -78,9 +78,38 @@ function rwLockSmoke4(w, t, param) {
     w.root().join.dec();
 }
 
+function rwLockStressTestRead(w, t, param) {
+    let rwlock = w.root().rwlock;
+
+    w.root().start.wait();
+
+    for (let i = 1; i <= 2000; i++) {
+	rwlock.read();
+	rwlock.unlock();
+    }
+
+    w.root().join.dec();
+}
+
+function rwLockStressTestWrite(w, t, param) {
+    let rwlock = w.root().rwlock;
+
+    w.root().start.wait();
+
+    for (let i = 1; i <= 2000; i++) {
+	rwlock.write();
+	w.root().foo += i;
+	rwlock.unlock();
+    }
+
+    w.root().join.dec();
+}
+
 exports.latchSmokeTest = latchSmokeTest;
 exports.lockStressTest = lockStressTest;
 exports.rwLockSmoke1 = rwLockSmoke1;
 exports.rwLockSmoke2 = rwLockSmoke2;
 exports.rwLockSmoke3 = rwLockSmoke3;
 exports.rwLockSmoke4 = rwLockSmoke4;
+exports.rwLockStressTestRead = rwLockStressTestRead;
+exports.rwLockStressTestWrite = rwLockStressTestWrite;

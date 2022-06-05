@@ -92,4 +92,33 @@ describe("sync", () => {
 
 	expect(w.root().foo).toBe((5000+1)/2 * 5000 * NUM_WORKERS);
     });
+
+    it("RwLock stress test", () => {
+	const NUM_WRITE_WORKERS = 2;
+	const NUM_READ_WORKERS = 4;
+
+	let w = world.World.create(1024);
+	w.root().foo = 0;
+	w.root().start = w.createLatch(1);
+	w.root().rwlock = w.createRwLock();
+	w.root().join = w.createLatch(NUM_WRITE_WORKERS + NUM_READ_WORKERS);
+
+	let workers = new Array();
+	for (let i = 0; i < NUM_READ_WORKERS; i++) {
+	    workers.push(testutil.spawnWorker(
+		w, "sync_spec_worker.js", "rwLockStressTestRead",
+		i, []));
+	}
+
+	for (let i = 0; i < NUM_WRITE_WORKERS; i++) {
+	    workers.push(testutil.spawnWorker(
+		w, "sync_spec_worker.js", "rwLockStressTestWrite",
+		i, []));
+	}
+
+	w.root().start.dec();
+	w.root().join.wait();
+
+	expect(w.root().foo).toBe((2000+1)/2 * 2000 * NUM_WRITE_WORKERS);
+    });
 });
