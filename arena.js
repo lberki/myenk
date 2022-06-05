@@ -83,7 +83,7 @@ class Arena {
 	this.uint8 = new Uint8Array(this.bytes);
 
 	this._criticalSection = new sync_internal.CriticalSection(this.int32, HEADER.LOCK);
-	debuglog("created arena(size=%d)", bytes.byteLength - ARENA_HEADER_SIZE);
+	debuglog(`created arena(size=${bytes.byteLength - ARENA_HEADER_SIZE})`);
 
 	this.alloc = this._criticalSection.wrap(this, this._allocLocked);
 	this.free = this._criticalSection.wrap(this, this._freeLocked);
@@ -107,7 +107,7 @@ class Arena {
 	let arena = new Arena(new SharedArrayBuffer(ARENA_HEADER_SIZE + size));
 	arena._init();
 
-	debuglog("created new arena(size=%d)", size);
+	debuglog(`created new arena(size=${size})`);
 	return arena;
     }
 
@@ -117,7 +117,7 @@ class Arena {
 	    throw new Error("invalid arena magic " + arena.uint32[HEADER.MAGIC]);
 	}
 
-	debuglog("created arena from existing(size=%d)", arena.size);
+	debuglog(`created arena from existing(size=${arena.size})`);
 	return arena;
     }
 
@@ -247,10 +247,10 @@ class Arena {
 	let allocSize = roundUp(size);
 	let newBlock  = this._fromFreeList(allocSize);
 	if (newBlock !== null) {
-	    debuglog("allocated %d bytes @ %d from freelist", size, newBlock);
+	    debuglog(`allocated ${size} bytes @ ${newBlock} from freelist`, size, newBlock);
 	} else {
 	    newBlock = this._fromBump(allocSize);
-	    debuglog("allocated %d bytes @ %d by expansion", size, newBlock);
+	    debuglog(`allocated ${size} bytes @ ${newBlock} by expansion`, size, newBlock);
 	}
 
 	// Set size on the newly allocated block
@@ -292,7 +292,7 @@ class Arena {
 
 	let size = this.uint32[ptr._base / 4];
 	let allocSize = roundUp(size);
-	debuglog("freeing %d bytes @ %d", size, ptr._base);
+	debuglog(`freeing %{size} bytes @ ${ptr._base}`);
 
 	// Increase free byte count in header
 	this.uint32[HEADER.BYTES_LEFT] = this.uint32[HEADER.BYTES_LEFT] +

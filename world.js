@@ -31,7 +31,8 @@ const ObjectTypes = [
     localobject.LocalObject,
     sharedsymbol.SharedSymbol,
     sync.Latch,
-    sync.Lock
+    sync.Lock,
+    sync.RwLock,
 ];
 
 for (let i = 1; i < ObjectTypes.length; i++) {
@@ -230,6 +231,10 @@ class World {
 
     createLock(...args) {
 	return this._createObject(sync.Lock, ...args);
+    }
+
+    createRwLock(...args) {
+	return this._createObject(sync.RwLock, ...args);
     }
 
     _registerSymbol(sym) {

@@ -1,5 +1,8 @@
 "use strict";
 
+const util = require("../util.js");
+const debuglog = util.debuglog("test");
+
 let worker_threads = require("worker_threads");
 
 let testutil = require("./testutil.js");
@@ -28,6 +31,41 @@ describe("sync", () => {
 	t.wait("five");
 
 	expect(w.root().foo).toBe("start worker1 main2 worker3 main4 worker5");
+    });
+
+    it("RwLock smoke test", () => {
+	let w = world.World.create(2048);
+
+	for (let l of ["start1", "start2", "start3", "start4",
+		       "rlocked1", "rlocked2", "wlocked3", "wlocked4",
+		       "done1",
+		       "unlock1", "unlock2", "unlock3", "unlock4"]) {
+	    w.root()[l] = w.createLatch(1);
+	}
+
+	w.root().rwlock = w.createRwLock();
+	w.root().join = w.createLatch(4);
+	w.root().result = "start";
+
+	let workers = new Array();
+
+	for (let i = 1; i <= 4; i++) {
+	    workers.push(testutil.spawnWorker(
+		w, "sync_spec_worker.js", "rwLockSmoke" + i,
+		i, []));
+	}
+
+	w.root().start1.dec();
+	w.root().rlocked1.wait();
+	w.root().start2.dec();
+	w.root().start3.dec();
+	w.root().start4.dec();
+	w.root().rlocked2.wait();
+	w.root().unlock1.dec();
+	w.root().done1.wait();
+	w.root().unlock2.dec();
+	w.root().join.wait();
+	expect(w.root().result).toBe("start rlock rlock runlock runlock wlock wunlock wlock wunlock");
     });
 
     it("Lock stress test", () => {

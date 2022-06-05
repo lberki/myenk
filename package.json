@@ -4,11 +4,13 @@
     "description": "",
     "main": "myenk.js",
     "scripts": {
-	"test": "node --expose-gc node_modules/.bin/jasmine"
+        "test": "node --expose-gc node_modules/.bin/jasmine"
     },
     "author": "",
     "license": "ISC",
     "devDependencies": {
-	"jasmine": "^4.0.2"
+        "jasmine": "^4.0.2",
+        "bindings": "*",
+        "node-gyp": "^9.0.0"
     }
 }

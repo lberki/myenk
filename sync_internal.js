@@ -1,9 +1,17 @@
 "use strict";
 
+const util = require("./util.js");
+const debuglog = util.debuglog("sync_internal");
+
 const LockState = {
     FREE: 0,
     LOCKED_NO_WAITERS: 1,
-    LOCKED_MAYBE_WAITERS: 2
+    LOCKED_MAYBE_WAITERS: 2,
+};
+
+const RwLockState = {
+    WRITE_LOCKED: 0,
+    FREE: 1,
 };
 
 const DEFAULT_TIMEOUT = 1000;
@@ -73,7 +81,72 @@ class CriticalSection {
     }
 }
 
+function readRwLock(_int32, _addr, timeout) {
+    if (timeout === undefined) {
+	timeout = DEFAULT_TIMEOUT;
+    }
+
+    while (true) {
+	let current = _int32[_addr];
+	let wait = false;
+	if (current !== RwLockState.WRITE_LOCKED) {
+	    let oldCurrent = current;
+	    current = Atomics.compareExchange(_int32, _addr, oldCurrent, oldCurrent + 1);
+	    if (oldCurrent === current) {
+		break;
+	    }
+	}
+
+	if (Atomics.wait(_int32, _addr, current, timeout) === "timed-out") {
+	    throw new Error("timeout");
+	}
+    }
+}
+
+function writeRwLock(_int32, _addr, timeout) {
+    if (timeout === undefined) {
+	timeout = DEFAULT_TIMEOUT;
+    }
+
+    while (true) {
+	let current = Atomics.compareExchange(_int32, _addr, RwLockState.FREE, RwLockState.WRITE_LOCKED);
+	if (current === RwLockState.FREE) {
+	    break;
+	}
+
+	let result = Atomics.wait(_int32, _addr, current, timeout);
+	if (result === "timed-out") {
+	    throw new Error("timeout");
+	} else if (result === "not-equal") {
+	    continue;
+	} else {
+	    if (_int32[_addr] !== RwLockState.FREE) {
+		Atomics.notify(_int32, _addr, 1);
+	    }
+	}
+    }
+
+}
+
+function releaseRwLock(_int32, _addr) {
+    while (true) {
+	let current = _int32[_addr];
+	let wanted = current === RwLockState.WRITE_LOCKED ? RwLockState.FREE : current - 1;
+	if (Atomics.compareExchange(_int32, _addr, current, wanted) === current) {
+	    break;
+	}
+    }
+
+    Atomics.notify(_int32, _addr, 1);
+}
+
+
+exports.LOCK_FREE = LockState.FREE;
 exports.acquireLock = acquireLock;
 exports.releaseLock = releaseLock;
+exports.RWLOCK_FREE = RwLockState.FREE;
+exports.readRwLock = readRwLock;
+exports.writeRwLock = writeRwLock;
+exports.releaseRwLock = releaseRwLock;
 exports.CriticalSection = CriticalSection;
 exports.DEFAULT_TIMEOUT = DEFAULT_TIMEOUT;

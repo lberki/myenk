@@ -2,15 +2,26 @@
 
 const worker_threads = require("worker_threads");
 
-function debuglog(t) {
+let print;
+
+try {
+    print = require("bindings")("nativelog").print;
+} catch (e) {
+    print = console.log;
+}
+
+function debuglog(tag) {
     if (!("NODE_DEBUG" in process.env)) {
 	return () => {};
     }
 
-    let modules = process.env["NODE_DEBUG"].split(",");
-    if (modules.indexOf(t) >= 0) {
-	return (fmt, ...args) => {
-	    console.log("[%d] %s %s: " + fmt, worker_threads.threadId, new Date().toISOString(), t, ...args)
+    let debugtags = process.env["NODE_DEBUG"].split(",");
+    if (debugtags.indexOf(tag) >= 0) {
+	return (msg) => {
+	    let threadId = worker_threads.threadId;
+	    let time = new Date().toISOString();
+
+	    print(`[${threadId}] ${time} ${tag}: ${msg}`);
 	};
     } else {
 	return () => {};
