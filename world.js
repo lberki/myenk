@@ -59,13 +59,12 @@ class World {
 	this._symbolToPrivate = new Map();
 	this._registry = new FinalizationRegistry(priv => { this._dispose(priv); });
 	this._mutation = null;
-	this._criticalSection = new sync_internal.CriticalSection(
-	    this._arena.int32,
-	    (header._base + arena.BLOCK_HEADER_SIZE) / 4 + 3);
-	this.sanityCheck = this._criticalSection.wrap(this, this._sanityCheckLocked);
-	this.localSanityCheck = this._criticalSection.wrap(this, this._localSanityCheckLocked);
-	this.gc = this._criticalSection.wrap(this, this._gcLocked);
-	this.emptyDumpster = this._criticalSection.wrap(this, this._emptyDumpsterLocked);
+	this._rwLockAddr = (header._base + arena.BLOCK_HEADER_SIZE) / 4 + HEADER.LOCK;
+	this._registerObjectForGc = this._writeLocked(this._registerObjectForGcLocked);
+	this.sanityCheck = this._writeLocked(this._sanityCheckLocked);
+	this.localSanityCheck = this._writeLocked(this._localSanityCheckLocked);
+	this.gc = this._writeLocked(this._gcLocked);
+	this.emptyDumpster = this._writeLocked(this._emptyDumpsterLocked);
 
 	// Every thread gets its own dumpster so it's appropriate to allocate it in the constructor
 	this._dumpster = this._arena.alloc(8);
@@ -74,6 +73,16 @@ class World {
 	debuglog("allocated dumpster @ " + this._dumpster._base);
     }
 
+    _writeLocked(fn) {
+	return (...args) => {
+	    try {
+		sync_internal.writeRwLock(this._arena.int32, this._rwLockAddr);
+		return fn.call(this, ...args);
+	    } finally {
+		sync_internal.releaseRwLock(this._arena.int32, this._rwLockAddr);
+	    }
+	};
+    }
     static create(size) {
 	// We allocate:
 	// - the size requested
@@ -90,7 +99,7 @@ class World {
 
 	header.set32(HEADER.MAGIC, MAGIC);  // Magic
 	header.set32(HEADER.OBJECT_COUNT, 0);
-	header.set32(HEADER.LOCK, 0);
+	header.set32(HEADER.LOCK, sync_internal.RWLOCK_FREE);
 	header.set32(HEADER.OBJLIST, 0);
 	header.set32(HEADER.OBJLIST_SIZE, 0);
 	header.set32(HEADER.OBJLIST_CAPACITY, 0);
@@ -387,7 +396,8 @@ class World {
 		// ...and continue recording the mutations caused by freeing objects, if needed.
 	    }
 
-	    this._criticalSection.run(() => {
+	    sync_internal.writeRwLock(this._arena.int32, this._rwLockAddr);
+	    try {
 		// Decrease object count
 		this._header.set32(
 		    HEADER.OBJECT_COUNT,
@@ -400,7 +410,9 @@ class World {
 		if (EXTENDED_SANITY_CHECKS) {
 		    this._sanityCheckLocked();
 		}
-	    });
+	    } finally {
+		sync_internal.releaseRwLock(this._arena.int32, this._rwLockAddr);
+	    }
 
 	    this._toFree = null;
 	    this._mutation = null;
@@ -474,26 +486,24 @@ class World {
 	return size;
     }
 
-    _registerObjectForGc(priv) {
-	this._criticalSection.run(() => {
-	    this._header.set32(
-		HEADER.OBJECT_COUNT,
-		this._header.get32(HEADER.OBJECT_COUNT) + 1);
+    _registerObjectForGcLocked(priv) {
+	this._header.set32(
+	    HEADER.OBJECT_COUNT,
+	    this._header.get32(HEADER.OBJECT_COUNT) + 1);
 
-	    let id = this._allocateObjectId();
-	    let objlist = this._arena.fromAddr(this._header.get32(HEADER.OBJLIST));
+	let id = this._allocateObjectId();
+	let objlist = this._arena.fromAddr(this._header.get32(HEADER.OBJLIST));
 
-	    // Releasing a lock is effectively a fence, so we don't need to put a fence between
-	    // these two statement to make sure that by the time the new object is linked into the
-	    // object list, its ID is recorded
-	    priv._setId(id);
-	    objlist.set32(id, priv._ptr._base);
-	    debuglog("assigned object ID " + id + " to object @ " + priv._ptr._base);
+	// Releasing a lock is effectively a fence, so we don't need to put a fence between
+	// these two statement to make sure that by the time the new object is linked into the
+	// object list, its ID is recorded
+	priv._setId(id);
+	objlist.set32(id, priv._ptr._base);
+	debuglog("assigned object ID " + id + " to object @ " + priv._ptr._base);
 
-	    if (EXTENDED_SANITY_CHECKS) {
-		this._sanityCheckLocked();
-	    }
-	});
+	if (EXTENDED_SANITY_CHECKS) {
+	    this._sanityCheckLocked();
+	}
     }
 
     _createObject(resultClass, ...args) {
@@ -521,6 +531,7 @@ class World {
 
 	// Register the object on the chain and thus make it eligible for GC.
 	this._registerObjectForGc(priv);
+
 	return pub;
     }
 

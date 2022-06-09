@@ -90,7 +90,7 @@ describe("sync", () => {
 	    w.root()["latch_" + i].wait();
 	}
 
-	expect(w.root().foo).toBe((5000+1)/2 * 5000 * NUM_WORKERS);
+	expect(w.root().foo).toBe((4000+1)/2 * 4000 * NUM_WORKERS);
     });
 
     it("RwLock stress test", () => {

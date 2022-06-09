@@ -24,7 +24,7 @@ function lockStressTest(w, t, param) {
 
     w.root().start.wait();
 
-    for (let i = 1; i <= 5000; i++) {
+    for (let i = 1; i <= 4000; i++) {
 	lock.lock();
 	w.root().foo += i;
 	lock.unlock();
