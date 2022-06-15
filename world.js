@@ -83,6 +83,7 @@ class World {
 	    }
 	};
     }
+
     static create(size) {
 	// We allocate:
 	// - the size requested
@@ -273,6 +274,7 @@ class World {
 
 	this._symbolToPrivate.set(sym, priv);
 	this._registerObjectForGc(priv);
+
 	return priv;
     }
 
@@ -327,7 +329,14 @@ class World {
 
 	this._localToPrivate.set(obj, priv);
 	this._registerObjectForGc(priv);
+
 	return priv;
+    }
+
+    _assertInMutation() {
+	if (this._mutation === null) {
+	    throw new Error("impossible");
+	}
     }
 
     // Start a mutation that is then ignored. This is used during garbage collection when freeing

@@ -442,7 +442,9 @@ class Array extends sharedobject.SharedObject {
 		    values.push(...arg[PRIVATE]._cloneValues());
 		} else {
 		    // This is a regular value. Move it into our address space as usual.
-		    values.push(this._valueToBytes(arg));
+		    this._world._withMutation(() => {
+			values.push(this._valueToBytes(arg));
+		    });
 		}
 	    }
 

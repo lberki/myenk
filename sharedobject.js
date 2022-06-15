@@ -147,6 +147,10 @@ class SharedObject {
     }
 
     _valueToBytes(value) {
+	if (value !== undefined) {
+	    this._world._assertInMutation();
+	}
+
 	let type = -1, bytes = -1;
 	if (value === undefined) {
 	    type = ValueType.UNDEFINED;
