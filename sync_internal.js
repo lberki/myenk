@@ -128,6 +128,30 @@ function writeRwLock(_int32, _addr, timeout) {
 
 }
 
+function upgradeRwLock(_int32, _addr, timeout) {
+    if (timeout === undefined) {
+	timeout = DEFAULT_TIMEOUT;
+    }
+
+    while (true) {
+	let current = Atomics.compareExchange(_int32, _addr, RwLockState.FREE + 1, RwLockState.WRITE_LOCKED);
+	if (current === RwLockState.FREE + 1) {
+	    break;
+	}
+
+	let result = Atomics.wait(_int32, _addr, current, timeout);
+	if (result === "timed-out") {
+	    throw new Error("timeout");
+	} else if (result === "not-equal") {
+	    continue;
+	} else {
+	    if (_int32[_addr] !== RwLockState.FREE + 1) {
+		Atomics.notify(_int32, _addr, 1);
+	    }
+	}
+    }
+}
+
 function releaseRwLock(_int32, _addr) {
     while (true) {
 	let current = _int32[_addr];
@@ -147,6 +171,7 @@ exports.releaseLock = releaseLock;
 exports.RWLOCK_FREE = RwLockState.FREE;
 exports.readRwLock = readRwLock;
 exports.writeRwLock = writeRwLock;
+exports.upgradeRwLock = upgradeRwLock;
 exports.releaseRwLock = releaseRwLock;
 exports.CriticalSection = CriticalSection;
 exports.DEFAULT_TIMEOUT = DEFAULT_TIMEOUT;
