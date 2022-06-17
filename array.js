@@ -109,11 +109,13 @@ class Array extends sharedobject.SharedObject {
 	// Private methods
 	this._nextValue = this._asAtomic(this._nextValueAtomic);
 	this._cloneValues = this._asAtomic(this._cloneValuesAtomic);
-	this._doSplice = this._asAtomic(this._doSpliceAtomic);
 
 	// Implementations of Array methods
+	this._impl_push = this._asAtomic(this._pushAtomic);
 	this._impl_pop = this._asAtomic(this._popAtomic);
 	this._impl_shift = this._asAtomic(this._shiftAtomic);
+	this._impl_unshift = this._asAtomic(this._unshiftAtomic);
+	this._impl_splice = this._asAtomic(this._spliceAtomic);
 	this._impl_at = this._asAtomic(this._atAtomic);
 	this._getLength = this._asAtomic(this._getLengthAtomic);
 	this._getOwnPropertyDescriptor = this._asAtomic(this._getOwnPropertyDescriptorAtomic);
@@ -268,30 +270,28 @@ class Array extends sharedobject.SharedObject {
 	return this._valueFromBytes(type, bytes);
     }
 
-    _impl_push(...args) {
+    _pushAtomic(...args) {
 	let values = this._toValues(...args);
 
-	this._criticalSection.run(() => {
-	    let oldSize;
+	let oldSize;
 
-	    let storePtr = this._getStore();
-	    if (storePtr === null) {
-		oldSize = 0;
-	    } else {
-		oldSize = this._getSize(storePtr);
-	    }
+	let storePtr = this._getStore();
+	if (storePtr === null) {
+	    oldSize = 0;
+	} else {
+	    oldSize = this._getSize(storePtr);
+	}
 
-	    let newSize = oldSize + args.length;
-	    storePtr = this._reallocMaybe(newSize);
+	let newSize = oldSize + args.length;
+	storePtr = this._reallocMaybe(newSize);
 
-	    for (let i = 0; i < args.length; i++) {
-		let [type, bytes] = values[i];
-		storePtr.set32(2 + 2 * (oldSize + i), type);
-		storePtr.set32(3 + 2 * (oldSize + i), bytes);
-	    }
+	for (let i = 0; i < args.length; i++) {
+	    let [type, bytes] = values[i];
+	    storePtr.set32(2 + 2 * (oldSize + i), type);
+	    storePtr.set32(3 + 2 * (oldSize + i), bytes);
+	}
 
-	    storePtr.set32(0, newSize);
-	});
+	storePtr.set32(0, newSize);
     }
 
     _popAtomic() {
@@ -319,35 +319,33 @@ class Array extends sharedobject.SharedObject {
 	return result;
     }
 
-    _impl_unshift(...args) {
+    _unshiftAtomic(...args) {
 	let values = this._toValues(...args);
 
-	this._criticalSection.run(() => {
-	    let oldSize;
-	    let storePtr = this._getStore();
-	    if (storePtr === null) {
-		oldSize = 0;
-	    } else {
-		oldSize = this._getSize(storePtr);
-	    }
+	let oldSize;
+	let storePtr = this._getStore();
+	if (storePtr === null) {
+	    oldSize = 0;
+	} else {
+	    oldSize = this._getSize(storePtr);
+	}
 
-	    // TODO: this potentially moves memory *twice* which could be avoided by a tiny bit more
-	    // complicated reallocation logic, but I am optimizing for development time here
-	    let newSize = oldSize + args.length;
-	    storePtr = this._reallocMaybe(newSize);
+	// TODO: this potentially moves memory *twice* which could be avoided by a tiny bit more
+	// complicated reallocation logic, but I am optimizing for development time here
+	let newSize = oldSize + args.length;
+	storePtr = this._reallocMaybe(newSize);
 
-	    for (let i = oldSize * 2 - 1; i >= 0; i--) {
-		storePtr.set32(args.length * 2 + 2 + i, storePtr.get32(2 + i));
-	    }
+	for (let i = oldSize * 2 - 1; i >= 0; i--) {
+	    storePtr.set32(args.length * 2 + 2 + i, storePtr.get32(2 + i));
+	}
 
-	    for (let i = 0; i < args.length; i++) {
-		let [type, bytes] = values[i];
-		storePtr.set32(2 + i * 2, type);
-		storePtr.set32(3 + i * 2, bytes);
-	    }
+	for (let i = 0; i < args.length; i++) {
+	    let [type, bytes] = values[i];
+	    storePtr.set32(2 + i * 2, type);
+	    storePtr.set32(3 + i * 2, bytes);
+	}
 
-	    storePtr.set32(0, newSize);
-	});
+	storePtr.set32(0, newSize);
     }
 
     _shiftAtomic() {
@@ -470,37 +468,6 @@ class Array extends sharedobject.SharedObject {
 	return this._createNewArray(values);
     }
 
-    _doSpliceAtomic(start, deleteCount, values) {
-	let storePtr = this._getStore();
-	let size = storePtr === null ? 0 : storePtr.get32(0);
-	deleteCount = clamp(deleteCount, 0, size - start);
-	let delta = values.length - deleteCount;
-	let newSize = size + delta;
-	storePtr = this._reallocMaybe(newSize);
-
-	// Save values that are deleted.
-	let result = [];
-	for (let i = start; i < start + deleteCount; i++) {
-	    result.push([storePtr.get32(2 + 2 * i), storePtr.get32(3 + 2 * i)]);
-	}
-
-	// Move the part of the array after the discarded values to its right place
-	let buf = storePtr.asUint8();
-	buf.copyWithin(
-	    8 + (start + values.length) * 8,  // target
-	    8 + (start + deleteCount) * 8,    // start
-	    8 + size * 8);                    // end
-
-	// Splice in the new values
-	for (let i = 0; i < values.length; i++) {
-	    storePtr.set32(2 + 2 * (start + i), values[i][0]);
-	    storePtr.set32(3 + 2 * (start + i), values[i][1]);
-	}
-
-	storePtr.set32(0, newSize);
-	return result;
-    }
-
     _logContents(storePtr) {
 	let contents = "[ ";
 	console.log("size: " + storePtr.get32(0));
@@ -517,31 +484,54 @@ class Array extends sharedobject.SharedObject {
 	let ok = false;
 
 	try {
-	    this._world._withMutation(() => {
-		for (let item of items) {
-		    result.push(this._valueToBytes(item));
-		}
-	    });
+	    for (let item of items) {
+		result.push(this._valueToBytes(item));
+	    }
 	    ok = true;
 	} finally {
 	    if (!ok) {
-		this._world._withMutation(() => {
-		    for (let [type, bytes] of result) {
-			this._freeValue(type, bytes);
-		    }
-		});
+		for (let [type, bytes] of result) {
+		    this._freeValue(type, bytes);
+		}
 	    }
 	}
 
 	return result;
     }
 
-    _impl_splice(start, deleteCount, ...items) {
+    _spliceAtomic(start, deleteCount, ...items) {
 	let itemValues = this._toValues(...items);
 
 	// This can signal an OOM but we don't care much about refcounts after an OOM, at least for
 	// the time being
-	let removedValues = this._doSplice(start, deleteCount, itemValues);
+
+	let storePtr = this._getStore();
+	let size = storePtr === null ? 0 : storePtr.get32(0);
+	deleteCount = clamp(deleteCount, 0, size - start);
+	let delta = itemValues.length - deleteCount;
+	let newSize = size + delta;
+	storePtr = this._reallocMaybe(newSize);
+
+	// Save values that are deleted.
+	let removedValues = [];
+	for (let i = start; i < start + deleteCount; i++) {
+	    removedValues.push([storePtr.get32(2 + 2 * i), storePtr.get32(3 + 2 * i)]);
+	}
+
+	// Move the part of the array after the discarded values to its right place
+	let buf = storePtr.asUint8();
+	buf.copyWithin(
+	    8 + (start + itemValues.length) * 8,  // target
+	    8 + (start + deleteCount) * 8,    // start
+	    8 + size * 8);                    // end
+
+	// Splice in the new values
+	for (let i = 0; i < itemValues.length; i++) {
+	    storePtr.set32(2 + 2 * (start + i), itemValues[i][0]);
+	    storePtr.set32(3 + 2 * (start + i), itemValues[i][1]);
+	}
+
+	storePtr.set32(0, newSize);
 	return this._createNewArray(removedValues);
     }
 

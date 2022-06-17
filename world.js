@@ -13,9 +13,6 @@ let array = require("./array.js");
 let sync = require("./sync.js");
 let sync_internal = require("./sync_internal.js");
 
-// push() (and many others) have >1 _withMutation() calls and GC can kick in in between
-// Symbols also have an rc != 0, which is probably problematic
-
 const EXTENDED_SANITY_CHECKS = true;
 
 const PRIVATE = Symbol("World private data");

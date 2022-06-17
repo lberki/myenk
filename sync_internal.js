@@ -28,7 +28,7 @@ function acquireLock(_int32, _addr, timeout) {
 
     let old = Atomics.compareExchange(_int32, _addr, LockState.FREE, LockState.LOCKED_NO_WAITERS);
     if (old === LockState.FREE) {
-	debuglog(`acquire ${_addr} done`);	
+	debuglog(`acquire ${_addr} done`);
 	return;  // Fast path. No contention.
     }
 
@@ -38,7 +38,7 @@ function acquireLock(_int32, _addr, timeout) {
 
 	if (old === LockState.FREE) {
 	    // ...but if it was this thread that flipped the lock to non-free, it is ours.
-	    debuglog(`acquire ${_addr} done`);	    
+	    debuglog(`acquire ${_addr} done`);
 	    return;
 	}
 
@@ -53,7 +53,7 @@ function acquireLock(_int32, _addr, timeout) {
 
 function releaseLock(_int32, _addr) {
     debuglog(`release ${_addr}`);
-    
+
     let old = Atomics.exchange(_int32, _addr, LockState.FREE);
     if (old === LockState.LOCKED_MAYBE_WAITERS) {
 	// If there may be waiters, signal one of them. If there weren't, the only harm done is
@@ -61,7 +61,7 @@ function releaseLock(_int32, _addr) {
 	Atomics.notify(_int32, _addr, 1);
     }
 
-    debuglog(`release ${_addr} done`);    
+    debuglog(`release ${_addr} done`);
 }
 
 class CriticalSection {
@@ -90,7 +90,7 @@ class CriticalSection {
 
 function readRwLock(_int32, _addr, timeout) {
     debuglog(`rw read ${_addr}`);
-    
+
     if (timeout === undefined) {
 	timeout = DEFAULT_TIMEOUT;
     }
@@ -111,7 +111,7 @@ function readRwLock(_int32, _addr, timeout) {
 	}
     }
 
-    debuglog(`rw read ${_addr} done`);    
+    debuglog(`rw read ${_addr} done`);
 }
 
 function writeRwLock(_int32, _addr, timeout) {
@@ -139,12 +139,12 @@ function writeRwLock(_int32, _addr, timeout) {
 	}
     }
 
-    debuglog(`rw write ${_addr} done`);    
+    debuglog(`rw write ${_addr} done`);
 }
 
 function upgradeRwLock(_int32, _addr, timeout) {
     debuglog(`rw upgrade ${_addr}`);
-    
+
     if (timeout === undefined) {
 	timeout = DEFAULT_TIMEOUT;
     }
@@ -167,12 +167,12 @@ function upgradeRwLock(_int32, _addr, timeout) {
 	}
     }
 
-    debuglog(`rw upgrade ${_addr} done`);    
+    debuglog(`rw upgrade ${_addr} done`);
 }
 
 function releaseRwLock(_int32, _addr) {
     debuglog(`rw release ${_addr}`);
-    
+
     while (true) {
 	let current = _int32[_addr];
 	let wanted = current === RwLockState.WRITE_LOCKED ? RwLockState.FREE : current - 1;
@@ -182,7 +182,7 @@ function releaseRwLock(_int32, _addr) {
     }
 
     Atomics.notify(_int32, _addr, 1);
-    debuglog(`rw release ${_addr} done`);    
+    debuglog(`rw release ${_addr} done`);
 }
 
 

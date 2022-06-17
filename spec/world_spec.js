@@ -183,6 +183,8 @@ describe("world", () => {
 	let t = testutil.spawnWorker(
 	    w, "world_spec_worker.js", "gcLoop", null, ["gcloop"]);
 
+	let objectCount = w.objectCount();
+
 	// This seems to be a very low number of iterations but it is apparently enough to tickle
 	// at least one bug
 	for (let i = 0; i < 20; i++) {
@@ -196,7 +198,9 @@ describe("world", () => {
 	w.root().done = true;
 	t.wait("gcloop");
 
-	// TODO: sanity check + object count
+	w.gc();
+	w.sanityCheck();
+	expect(w.objectCount()).toBe(objectCount);
     });
 
     it("symbol allocation stress test", async () => {
@@ -207,14 +211,18 @@ describe("world", () => {
 
 	let t = testutil.spawnWorker(
 	    w, "world_spec_worker.js", "gcLoop", null, ["gcloop"]);
+
+	let objectCount = w.objectCount();
+
 	for (let i = 0; i < 1000; i++) {
 	    let s = Symbol("stress test " + i);
 	    w.root().symbols.push(s);
-	    //w.localSanityCheck();
 	}
 	w.root().done = true;
 	t.wait("gcloop");
 
-	// TODO: sanity check + check object count
+	w.gc();
+	w.sanityCheck();
+	expect(w.objectCount()).toBe(objectCount + 1000);  // Symbols are never deallocated
     });
 });
