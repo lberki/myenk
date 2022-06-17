@@ -292,7 +292,7 @@ class Arena {
 
 	let size = this.uint32[ptr._base / 4];
 	let allocSize = roundUp(size);
-	debuglog(`freeing %{size} bytes @ ${ptr._base}`);
+	debuglog(`freeing ${size} bytes @ ${ptr._base}`);
 
 	// Increase free byte count in header
 	this.uint32[HEADER.BYTES_LEFT] = this.uint32[HEADER.BYTES_LEFT] +

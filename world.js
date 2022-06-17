@@ -2,6 +2,7 @@
 
 const util = require("./util.js");
 const debuglog = util.debuglog("world");
+const debuglog2 = util.debuglog("fatal");
 
 let arena = require("./arena.js");
 let sharedobject = require("./sharedobject.js");
@@ -12,12 +13,14 @@ let array = require("./array.js");
 let sync = require("./sync.js");
 let sync_internal = require("./sync_internal.js");
 
+// push() (and many others) have >1 _withMutation() calls and GC can kick in in between
+// Symbols also have an rc != 0, which is probably problematic
 
 const EXTENDED_SANITY_CHECKS = true;
 
 const PRIVATE = Symbol("World private data");
 
-const HEADER_SIZE = 32;
+const HEADER_SIZE = 64;
 const OBJECT_SIZE = 16;
 const MAGIC = 0x1083041d;
 const THREAD_RC_DELTA = 2000;    // Change in refcount for references from threads
@@ -43,11 +46,12 @@ const HEADER = {
     "MAGIC": 0,
     "ROOT": 1,  // Address of root object
     "OBJECT_COUNT": 2,  // including root object
-    "LOCK": 3,
-    "OBJLIST": 4,  // Address of object list block
-    "OBJLIST_SIZE": 5,  // Number of used object IDs (=high water mark)
-    "OBJLIST_CAPACITY": 6,  // Allocated length of objlist
-    "FREELIST": 7,  // head of object ID freelist within object list block
+    "OBJLIST": 3,  // Address of object list block
+    "OBJLIST_SIZE": 4,  // Number of used object IDs (=high water mark)
+    "OBJLIST_CAPACITY": 5,  // Allocated length of objlist
+    "FREELIST": 6,  // head of object ID freelist within object list block
+    "LOCK": 7,
+    "GC_LOCK": 8,
 };
 
 class World {
@@ -60,10 +64,10 @@ class World {
 	this._registry = new FinalizationRegistry(priv => { this._dispose(priv); });
 	this._mutation = null;
 	this._rwLockAddr = (header._base + arena.BLOCK_HEADER_SIZE) / 4 + HEADER.LOCK;
+	this._gcLockAddr = (header._base + arena.BLOCK_HEADER_SIZE) / 4 + HEADER.GC_LOCK;
 	this._registerObjectForGc = this._writeLocked(this._registerObjectForGcLocked);
 	this.sanityCheck = this._writeLocked(this._sanityCheckLocked);
 	this.localSanityCheck = this._writeLocked(this._localSanityCheckLocked);
-	this.gc = this._writeLocked(this._gcLocked);
 	this.emptyDumpster = this._writeLocked(this._emptyDumpsterLocked);
 
 	// Every thread gets its own dumpster so it's appropriate to allocate it in the constructor
@@ -100,11 +104,12 @@ class World {
 
 	header.set32(HEADER.MAGIC, MAGIC);  // Magic
 	header.set32(HEADER.OBJECT_COUNT, 0);
-	header.set32(HEADER.LOCK, sync_internal.RWLOCK_FREE);
 	header.set32(HEADER.OBJLIST, 0);
 	header.set32(HEADER.OBJLIST_SIZE, 0);
 	header.set32(HEADER.OBJLIST_CAPACITY, 0);
 	header.set32(HEADER.FREELIST, 0);
+	header.set32(HEADER.LOCK, sync_internal.RWLOCK_FREE);
+	header.set32(HEADER.GC_LOCK, sync_internal.RWLOCK_FREE);
 
 	result._root = result.createDictionary();
 	header.set32(HEADER.ROOT, result._root[PRIVATE]._ptr._base);  // Root object
@@ -257,7 +262,7 @@ class World {
 
 	// Allocate memory as usual and register in the address-to-public map.
 	let ptr = this._arena.alloc(OBJECT_SIZE);
-	debuglog("allocated local symbol @ " + ptr._base);
+	debuglog2("allocated local symbol @ " + ptr._base);
 
 	[priv, ] = sharedsymbol.SharedSymbol._create(this, this._arena, ptr);
 
@@ -369,6 +374,7 @@ class World {
 	}
 
 	this._mutation = [];
+	sync_internal.readRwLock(this._arena.int32, this._gcLockAddr);
 	try {
 	    return l();
 	} finally {
@@ -421,6 +427,7 @@ class World {
 		}
 	    } finally {
 		sync_internal.releaseRwLock(this._arena.int32, this._rwLockAddr);
+		sync_internal.releaseRwLock(this._arena.int32, this._gcLockAddr);		
 	    }
 
 	    this._toFree = null;
@@ -576,7 +583,7 @@ class World {
 	let ptr = this._arena.fromAddr(addr);
 	let type = sharedobject.SharedObject._getType(ptr.get32(1));
 	if (type <= 0 || type >= ObjectTypes.length) {
-	    throw new Error("invalid object type in shared buffer: " + type);
+	    throw new Error("invalid object type in shared buffer @ " + addr + ": " + type);
 	}
 
 	return ObjectTypes[type]._create(this, this._arena, ptr);
@@ -708,10 +715,17 @@ class World {
 	});
     }
 
+    gc() {
+	sync_internal.writeRwLock(this._arena.int32, this._gcLockAddr);
+	sync_internal.writeRwLock(this._arena.int32, this._rwLockAddr);
+	try {
+	    this._gcLocked();
+	} finally {
+	    sync_internal.releaseRwLock(this._arena.int32, this._rwLockAddr);
+	    sync_internal.releaseRwLock(this._arena.int32, this._gcLockAddr);
+	}
+    }
     _gcLocked() {
-	// GC is one of the few times when a thread holds more than one lock (the world lock + a
-	// single object lock)
-
 	// Collect all the GC roots (objects referenced from other threads)
 	let objlist = this._arena.fromAddr(this._header.get32(HEADER.OBJLIST));
 	let roots = [];
@@ -758,9 +772,14 @@ class World {
 		for (let addr of obj._references()) {
 		    // TODO: it's probably quite wasteful to always create a new local object even
 		    // though it's already been visited
-		    let [priv, ] = this._createObjectPair(addr);
-		    debuglog("enqueuing edge @ " + obj._ptr._base + " -> @ " + addr);
-		    queue.push(priv);
+		    try {
+			let [priv, ] = this._createObjectPair(addr);
+			debuglog("enqueuing edge @ " + obj._ptr._base + " -> @ " + addr);
+			queue.push(priv);
+		    } catch (e) {
+			debuglog2("while visiting edge @ " + obj._ptr._base + " -> @ " + addr);
+			throw e;
+		    }
 		}
 	    });
 	}
@@ -793,7 +812,7 @@ class World {
 		}
 
 		// Can be GCd. Free all data structures, unlink from object ID list.
-		debuglog("object @ " + obj._ptr._base + " is unreachable, freeing");
+		debuglog("object @ " + obj._ptr._base + " is unreachable, freeing (rc=" + rc + ")");
 		this._withIgnoredMutation(() => {
 		    obj._free();
 		});
