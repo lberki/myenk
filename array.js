@@ -427,6 +427,9 @@ class Array extends sharedobject.SharedObject {
 	return pub;
     }
 
+    // This method containts multiple _withMutation() calls, but this time, it is fine because no
+    // reference is deleted while it's running and every accessed value is already referenced from
+    // somewhere so GC can't free an object from under us.
     _impl_concat(...args) {
 	let outputSize = 0;
 	let values = [];
@@ -612,9 +615,6 @@ class Array extends sharedobject.SharedObject {
 
 	this._world._withMutation(() => {
 	    [newType, newValue] = this._valueToBytes(value);
-	});
-
-	this._world._withMutation(() => {
 	    this._criticalSection.run(() => {
 		let storePtr = this._reallocMaybe(idx + 1);
 
